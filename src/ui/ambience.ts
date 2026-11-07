@@ -206,15 +206,15 @@ const BUILD: Record<Amb, (c: AudioContext, l: Layer) => void> = {
     const style = Math.floor(rnd(0, 3));
     for (let k = 0; k < n; k++) {
       const w = t + k * rnd(0.08, 0.16);
-      if (style === 0) blip(c, l, { f: base, to: base * 1.35, t: w, dur: 0.07, vol: 0.035 });
-      else if (style === 1) blip(c, l, { f: base * 1.3, to: base * 0.8, t: w, dur: 0.1, vol: 0.03 });
-      else blip(c, l, { f: base * (k % 2 ? 1.2 : 1), t: w, dur: 0.05, vol: 0.03 });
+      if (style === 0) blip(c, l, { f: base, to: base * 1.35, t: w, dur: 0.07, vol: 0.08 });
+      else if (style === 1) blip(c, l, { f: base * 1.3, to: base * 0.8, t: w, dur: 0.1, vol: 0.07 });
+      else blip(c, l, { f: base * (k % 2 ? 1.2 : 1), t: w, dur: 0.05, vol: 0.07 });
     }
   }),
   crickets: (c, l) => {
     const p1 = rnd(4300, 4700), p2 = rnd(3900, 4200);
-    every(l, 0.7, 1.4, (t) => { for (let k = 0; k < 3; k++) blip(c, l, { f: p1, t: t + k * 0.06, dur: 0.035, vol: 0.018, trem: 60 }); });
-    every(l, 0.9, 1.8, (t) => { for (let k = 0; k < 4; k++) blip(c, l, { f: p2, t: t + k * 0.05, dur: 0.03, vol: 0.012, trem: 70 }); });
+    every(l, 0.7, 1.4, (t) => { for (let k = 0; k < 3; k++) blip(c, l, { f: p1, t: t + k * 0.06, dur: 0.035, vol: 0.04, trem: 60 }); });
+    every(l, 0.9, 1.8, (t) => { for (let k = 0; k < 4; k++) blip(c, l, { f: p2, t: t + k * 0.05, dur: 0.03, vol: 0.028, trem: 70 }); });
   },
   owls: (c, l) => every(l, 7, 15, (t) => {
     blip(c, l, { f: 390, to: 370, t, dur: 0.35, vol: 0.05, attack: 0.06 });
@@ -227,7 +227,7 @@ const BUILD: Record<Amb, (c: AudioContext, l: Layer) => void> = {
   },
   gulls: (c, l) => every(l, 6, 14, (t) => {
     const n = Math.floor(rnd(2, 4));
-    for (let k = 0; k < n; k++) blip(c, l, { f: rnd(1500, 1800), to: rnd(850, 1000), type: 'triangle', t: t + k * 0.32, dur: 0.24, vol: 0.025, lp: 2500 });
+    for (let k = 0; k < n; k++) blip(c, l, { f: rnd(1500, 1800), to: rnd(850, 1000), type: 'triangle', t: t + k * 0.32, dur: 0.24, vol: 0.08, lp: 2500 });
   }),
   fire: (c, l) => {
     bed(c, l, { type: 'lowpass', freq: 380, vol: 0.12, gRate: 0.5, gDepth: 0.04 });
@@ -278,7 +278,7 @@ const BUILD: Record<Amb, (c: AudioContext, l: Layer) => void> = {
   frogs: (c, l) => every(l, 0.7, 2.8, (t) => {
     const f = rnd(100, 170);
     const n = Math.floor(rnd(1, 4));
-    for (let k = 0; k < n; k++) blip(c, l, { f, to: f * 0.85, type: 'square', t: t + k * 0.22, dur: 0.16, vol: 0.03, trem: 32, lp: 800 });
+    for (let k = 0; k < n; k++) blip(c, l, { f, to: f * 0.85, type: 'square', t: t + k * 0.22, dur: 0.16, vol: 0.06, trem: 32, lp: 800 });
   }),
   chimes: (c, l) => every(l, 2.5, 7, (t) => {
     const pent = [0, 2, 4, 7, 9];
@@ -291,6 +291,6 @@ const BUILD: Record<Amb, (c: AudioContext, l: Layer) => void> = {
   }),
   bubbles: (c, l) => every(l, 0.9, 3, (t) => {
     const n = Math.floor(rnd(2, 5));
-    for (let k = 0; k < n; k++) { const f = rnd(250, 600); blip(c, l, { f, to: f * 1.8, t: t + k * rnd(0.05, 0.12), dur: 0.06, vol: 0.03 }); }
+    for (let k = 0; k < n; k++) { const f = rnd(250, 600); blip(c, l, { f, to: f * 1.8, t: t + k * rnd(0.05, 0.12), dur: 0.06, vol: 0.06 }); }
   }),
 };
