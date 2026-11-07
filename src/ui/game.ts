@@ -17,7 +17,7 @@ import { LiveBar, floatText, floatKind, pulse, sparks, strike, flash, hitStop, s
 import { sceneArt, combatBackdrop, type SceneTime } from './art/scenes';
 import { itemArt, potionArt, goldArt } from './art/items';
 import { openSettings } from './settings-sheet';
-import { key, eq, distance, toPixel, compass, type Hex } from '../core/hex';
+import { key, eq, distance, toPixel, compass, spiral, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
 import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen } from '../core/state';
 import {
@@ -34,6 +34,7 @@ import { landmarkAt, LANDMARKS, terrainName, riverAt, styleAt, type LandmarkKind
 import { pick, chance, mulberry32, hashString, randInt } from '../core/rng';
 import { genEvent, genOutcome, genRegion, genQuest, genChapterEnd, type Outcome } from '../ai/director';
 import { aiEnabled } from '../ai/settings';
+import { Foresight, prune, type Want } from '../ai/foresight';
 import { STATS, STAT_NAMES } from '../core/types';
 import type { ClassId, Choice, EnemySpec, EventContext, GameEvent, GameState, Hero, Item, PoiKind, Stat, NPC } from '../core/types';
 
@@ -82,7 +83,7 @@ export class Game {
         btn('👥', 'Party', () => this.openParty(), 'party-btn'),
         btn('📜', 'Journal', () => this.openJournal()),
         btn('🏕️', 'Camp', () => this.confirmCamp(), 'camp-btn'),
-        btn('⚙️', 'Menu', () => openSettings({ inGame: true, onQuit: () => this.onQuit() })),
+        btn('⚙️', 'Menu', () => openSettings({ inGame: true, onQuit: () => { this.foresight.stop(); this.onQuit(); } })),
       ),
     );
   }
@@ -149,6 +150,62 @@ export class Game {
     this.dock.querySelector('.bag-btn')?.classList.toggle('badged', (this.s.player.points ?? 0) + (this.s.player.asi ?? 0) > 0);
     this.dock.querySelector('.party-btn')?.classList.toggle('badged', members(this.s).slice(1).some((m) => m.hero.points > 0));
     this.map.invalidate(300);
+  }
+
+  // ================= Foresight =================
+  private foresight = new Foresight(() => this.s, (st) => { if (st === this.s) save(st); });
+
+  /** Write the encounters around the hero ahead of time, so stepping onto them is instant (src/ai/foresight.ts). */
+  private foresee() {
+    const s = this.s;
+    if (!this.foresight.enabled) return;
+    const quest = s.quest;
+    // Give up spots that no longer apply; their scenes become spares.
+    prune(s, (k, f) => {
+      const t = s.tiles[key(f.ctx.hex)];
+      if (k.startsWith('quest:')) return !!quest && f.quest === quest.title && eq(f.ctx.hex, quest.target);
+      if (k.startsWith('lm:')) return !t?.lm;
+      return !t?.done;
+    });
+    const ctxAt = (hx: Hex, poi: EventContext['poi'], extra: Partial<EventContext> = {}): EventContext => ({
+      hex: hx, biome: biomeAt(hx, s.seed), poi, tier: tierAt(hx), regionName: this.regionName(hx), terrain: terrainName(hx, s.seed), ...extra,
+    });
+    const wants: Want[] = [];
+    if (quest) {
+      const d = distance(s.pos, quest.target);
+      if (d > 0 && d <= 4) {
+        wants.push({ key: `quest:${key(quest.target)}`, dist: d - 2, make: () => (s.quest === quest
+          ? ctxAt(quest.target, 'quest', { tier: Math.max(tierAt(quest.target), 1 + Math.floor(s.questsDone / 2)) }) : null) });
+      }
+    }
+    // Same order of precedence as enterTile: an unresolved place, else a landmark scene.
+    for (const hx of spiral(s.pos, 2)) {
+      const d = distance(s.pos, hx);
+      if (d === 0 || (quest && eq(hx, quest.target))) continue;
+      const k = key(hx);
+      const poi = poiAt(hx, s.seed);
+      if (poi && poi !== 'start' && !s.tiles[k]?.done) {
+        wants.push({ key: `poi:${k}`, dist: d, make: () => (s.tiles[k]?.done ? null : ctxAt(hx, poi, { returningNpc: this.maybeReturningNpc(poi) })) });
+        continue;
+      }
+      if (poi === 'village') continue;
+      const lmk = landmarkAt(hx, s.seed);
+      if (lmk && LANDMARKS[lmk].event && !s.tiles[k]?.lm) {
+        wants.push({ key: `lm:${k}`, dist: d, make: () => (s.tiles[k]?.lm ? null : ctxAt(hx, 'wild', { landmark: lmk })) });
+      }
+    }
+    // Spare wilderness scenes for the terrain underfoot and next door (they only
+    // happen now and then, so places come first).
+    const biomes = new Map<string, Hex>();
+    for (const hx of spiral(s.pos, 1)) {
+      const b = biomeAt(hx, s.seed);
+      if (isPassable(hx, s.seed) && !biomes.has(b)) biomes.set(b, hx);
+    }
+    for (const [b, hx] of biomes) {
+      const here = eq(hx, s.pos) || biomeAt(s.pos, s.seed) === b;
+      wants.push({ key: `wild:${b}`, dist: here ? 1.5 : 2.5, make: () => ctxAt(hx, 'wild') });
+    }
+    this.foresight.plan(wants, (d) => (d < 2 ? 2 : 1));
   }
 
   // ================= Achievements =================
@@ -270,6 +327,7 @@ export class Game {
     if (this.s.omen) trackSeen(this.s, 'omens', this.s.omen);
     this.setScene();
     this.persist();
+    this.foresee();
     if (this.s.stamina <= 0) this.confirmCamp(true);
   }
 
@@ -437,6 +495,7 @@ export class Game {
       this.renderHud();
       const stop = await this.enterTile(step);
       this.persist();
+      this.foresee();
       if (stop || s.player.hp <= 0) break;
     }
   }
@@ -628,7 +687,13 @@ export class Game {
       h('div', { class: 'spin-die', html: d20Svg('?') }),
       h('p', { class: 'muted center' }, aiEnabled() ? 'The Dungeon Master weaves fate…' : 'The mists part…'),
     ));
-    const ev = preset ?? await genEvent(s, ctx);
+    let ev = preset;
+    if (!ev) {
+      // Written ahead (or a fitting spare)? Then no wait at all.
+      const ready = await this.foresight.take(s, ctx);
+      if (ready) ({ ctx, ev } = ready);
+      else ev = await genEvent(s, ctx);
+    }
     // Remember the open event so closing the app mid-choice brings it back.
     s.pending = { ctx, ev };
     save(s);

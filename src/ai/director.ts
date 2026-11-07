@@ -171,10 +171,20 @@ export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
 
 export async function genEvent(s: GameState, ctx: EventContext): Promise<GameEvent> {
   if (!aiEnabled()) return baseFallback(ctx);
+  try {
+    return await genEventAi(s, ctx);
+  } catch (e) {
+    console.warn('event fallback', e);
+    return baseFallback(ctx);
+  }
+}
+
+/** One AI-written encounter. Throws when the model can't be reached (no fallback). */
+export async function genEventAi(s: GameState, ctx: EventContext): Promise<GameEvent> {
   const returning = ctx.returningNpc
     ? `Feature this RETURNING character, who remembers the hero: ${JSON.stringify({ name: ctx.returningNpc.name, role: ctx.returningNpc.role, personality: ctx.returningNpc.personality, affinity: ctx.returningNpc.affinity, memories: ctx.returningNpc.memories })}. Put them in "npc" with the same name.`
     : '';
-  try {
+  {
     const raw = await ask<any>(s, `Create the next encounter.
 Location: ${POI_GUIDE[ctx.poi] ?? POI_GUIDE.wild}. Terrain: ${ctx.terrain ?? BIOME_INFO[ctx.biome].name}. Region: ${ctx.regionName}. Danger tier ${ctx.tier}/5.
 ${ctx.landmark ? `The scene is built around a landmark standing here: ${LANDMARKS[ctx.landmark as LandmarkKind].name} — ${LANDMARKS[ctx.landmark as LandmarkKind].lore[0]} Make the landmark central to the encounter and its choices.` : ''}
@@ -191,9 +201,6 @@ Return JSON:
     "enemy": {"name": "...", "kind": "beast|humanoid|undead|monster|spirit", "emoji": "one emoji"} (fight only)} ]}
 Rules: offer genuinely different approaches using DIFFERENT stats; make choices flavourful and specific to the scene; include "leave" unless this is the quest climax.`, 650);
     return sanitizeEvent(raw, ctx);
-  } catch (e) {
-    console.warn('event fallback', e);
-    return baseFallback(ctx);
   }
 }
 

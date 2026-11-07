@@ -25,8 +25,8 @@ async function pipe(bytes: Uint8Array, stream: CompressionStream | Decompression
 }
 
 export async function encodeSave(s: GameState): Promise<string> {
-  // Pending UI state never travels: the importer starts on the map.
-  const clean = { ...s, pending: null, pendingFight: null };
+  // Pending UI state and pre-written encounters never travel: the importer starts on the map.
+  const clean = { ...s, pending: null, pendingFight: null, foresight: undefined };
   const json = new TextEncoder().encode(JSON.stringify(clean));
   if (typeof CompressionStream !== 'undefined') {
     try {

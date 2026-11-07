@@ -140,6 +140,8 @@ export interface GameState {
   pending?: { ctx: EventContext; ev: GameEvent } | null;
   /** a fight that was in progress when the app closed; restarted on resume */
   pendingFight?: PendingFight | null;
+  /** encounters written ahead of time for nearby tiles, plus spares to reuse (src/ai/foresight.ts) */
+  foresight?: ForesightStore;
   stats: { kills: number; friends: number; explored: number; crits: number; fumbles: number; chapterStartGold: number; chapterKills: number; chapterExplored: number };
 }
 
@@ -165,6 +167,25 @@ export interface GameEvent {
   text: string;
   npc: NpcSpec | null;
   choices: Choice[];
+}
+
+/** An encounter the AI wrote before the hero got there. */
+export interface Foreseen {
+  ctx: EventContext;
+  ev: GameEvent;
+  /** day it was written, to let stale ones go */
+  day: number;
+  /** companions in the party when it was written */
+  party: string[];
+  /** quest it was written for (quest climaxes only) */
+  quest?: string;
+}
+
+export interface ForesightStore {
+  /** written for one particular tile: "poi:q,r", "lm:q,r", "quest:q,r" */
+  spots: Record<string, Foreseen>;
+  /** spares that fit any tile of the same kind and terrain: unused wild scenes and abandoned spots */
+  pool: Foreseen[];
 }
 
 export interface EventContext {

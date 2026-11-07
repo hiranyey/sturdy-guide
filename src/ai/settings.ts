@@ -13,6 +13,8 @@ export interface Settings {
   reduceMotion: boolean;
   readAloud: boolean;
   installDismissedAt: number;
+  /** write nearby encounters ahead of time (src/ai/foresight.ts) */
+  foresight: boolean;
 }
 
 const KEY = 'hexbound.settings';
@@ -33,7 +35,7 @@ const prefersReducedMotion = (() => {
 const defaults: Settings = {
   apiKey: '', model: DEFAULT_MODEL, tapToRoll: true, sound: true, textSpeed: 2,
   sfxVol: 0.8, music: true, musicVol: 0.45, ambience: true, ambVol: 0.6, textScale: 1, reduceMotion: prefersReducedMotion, readAloud: false,
-  installDismissedAt: 0,
+  installDismissedAt: 0, foresight: true,
 };
 
 export const settings: Settings = (() => {
