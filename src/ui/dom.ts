@@ -1,3 +1,4 @@
+import { sfx } from './audio';
 type Child = Node | string | number | null | undefined | false | Child[];
 type Props = Record<string, unknown> & { class?: string; style?: string };
 
@@ -92,6 +93,7 @@ export class Sheet {
     this.done = new Promise((r) => (this.resolver = r));
     document.getElementById('overlay')!.appendChild(this.root);
     requestAnimationFrame(() => requestAnimationFrame(() => this.root.classList.add('open')));
+    if (!cls.includes('combat')) sfx.open();
     swipeToDismiss(panel, this.body, () => !!opts.dismissable, () => this.close(), backdrop);
   }
 

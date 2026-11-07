@@ -6,6 +6,7 @@ import { startOAuth, testConnection } from '../ai/openrouter';
 import { wipe } from '../core/state';
 import { sfx, applyVolumes } from './audio';
 import { refreshMusic } from './music';
+import { refreshAmbience } from './ambience';
 import { applyPrefs, speechSupported, speak, stopSpeech } from './prefs';
 import { installAvailable, offerInstall, isStandalone } from './install';
 
@@ -55,8 +56,10 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
       h('h3', null, 'Sound'),
       toggle('Sound effects', settings.sound, (v) => { settings.sound = v; applyVolumes(); }),
       slider('Effects volume', settings.sfxVol, (v) => { settings.sfxVol = v; applyVolumes(); }, () => sfx.coin()),
-      toggle('Ambient music', settings.music, (v) => { settings.music = v; applyVolumes(); refreshMusic(); }),
+      toggle('Music', settings.music, (v) => { settings.music = v; applyVolumes(); refreshMusic(); }),
       slider('Music volume', settings.musicVol, (v) => { settings.musicVol = v; applyVolumes(); }),
+      toggle('Ambient sounds (wind, birds, fire…)', settings.ambience, (v) => { settings.ambience = v; applyVolumes(); refreshAmbience(); }),
+      slider('Ambience volume', settings.ambVol, (v) => { settings.ambVol = v; applyVolumes(); }),
       speechSupported() ? toggle('Read story aloud', settings.readAloud, (v) => { settings.readAloud = v; if (v) speak('The story will be read aloud.'); else stopSpeech(); }) : null,
       h('h3', null, 'Accessibility'),
       segmented('Text size', [[0.9, 'S'], [1, 'M'], [1.15, 'L'], [1.3, 'XL']], settings.textScale, (v) => { settings.textScale = v; applyPrefs(); render(); }),

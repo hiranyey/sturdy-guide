@@ -1,5 +1,6 @@
 import { h, $, Sheet, modal, toast, typewrite, wait, bar, vibrate, longPress, popover } from './dom';
-import { setMood, moodForBiome } from './music';
+import { setMood, scene, stinger } from './music';
+import { setAmbience, CAMP_AMBIENCE, type SceneCtx } from './ambience';
 import { speak, stopSpeech, announce } from './prefs';
 import { offerInstall } from './install';
 import { shareCard } from './share';
@@ -236,6 +237,12 @@ export class Game {
     return f > 0.5 ? 'day' : f > 0.2 ? 'dusk' : 'night';
   }
 
+  /** Music and ambience for where you stand (or a place you're visiting). */
+  private setScene(hx: Hex = this.s.pos, poi?: SceneCtx['poi']) {
+    const s = this.s;
+    scene({ biome: biomeAt(hx, s.seed), poi: poi === undefined ? poiAt(hx, s.seed) : poi, time: this.timeOfDay(), river: riverAt(hx, s.seed) });
+  }
+
   /** Illustrated banner for the top of a parchment card. */
   private sceneBanner(hx: Hex, poi?: PoiKind | 'wild' | 'quest', landmark?: string, time = this.timeOfDay(), biome = biomeAt(hx, this.s.seed)) {
     const s = this.s;
@@ -258,7 +265,7 @@ export class Game {
     }
     this.regionCheck(this.s.pos);
     if (this.s.omen) trackSeen(this.s, 'omens', this.s.omen);
-    setMood(moodForBiome(biomeAt(this.s.pos, this.s.seed)));
+    this.setScene();
     this.persist();
     if (this.s.stamina <= 0) this.confirmCamp(true);
   }
@@ -346,7 +353,7 @@ export class Game {
     log(s, `took up the quest "${q.title}"`, 'quest');
     this.persist();
     if (announce) {
-      sfx.level();
+      sfx.quest();
       const m = modal('quest');
       m.card.append(
         h('div', { class: 'eyebrow' }, `Quest ${s.questsDone + 1}`),
@@ -420,7 +427,7 @@ export class Game {
       }
       const from = { ...s.pos };
       s.stamina -= cost;
-      sfx.step();
+      sfx.step(biomeAt(step, s.seed), riverAt(step, s.seed));
       await this.map.animateMove(from, step, path.length > 1 ? 200 : 260);
       s.pos = { ...step };
       reveal(s, step);
@@ -475,6 +482,7 @@ export class Game {
     }
     log(s, `discovered ${def.name.startsWith('Old') || def.name.startsWith('The') ? 'the' : 'a'} ${def.name.replace(/^The /, '')}${perk ? ` (${perk})` : ''}`, 'event');
     this.setTicker(lore);
+    sfx.discover();
     toast(`${def.icon} ${def.name}${perk ? ' — ' + perk : ''}`, perk ? 'gold' : 'info', 3200);
     this.persist();
     if (levels) await this.levelUp(levels);
@@ -495,7 +503,7 @@ export class Game {
     const tier = tierAt(hx);
     trackSeen(s, 'biomes', biome);
     trackSeen(s, 'styles', `${biome}:${styleAt(hx, s.seed)}`);
-    setMood(moodForBiome(biome));
+    this.setScene(hx);
 
     if (s.quest && eq(hx, s.quest.target)) {
       await this.runEvent({ hex: hx, biome, poi: 'quest', tier: Math.max(tier, 1 + Math.floor(s.questsDone / 2)), regionName: this.regionName(hx) });
@@ -553,7 +561,7 @@ export class Game {
         toast(`You find ${g} gold glinting in the dirt.`, 'gold');
       } else if (r < 0.75 && s.player.potions < 6) {
         s.player.potions++;
-        sfx.heal();
+        sfx.coin();
         toast('You find a stoppered potion in an old satchel. 🧪', 'good');
       } else {
         const h2 = heal(s.player, rollDice(1, 6)[0] + tier);
@@ -592,6 +600,7 @@ export class Game {
     el.classList.remove('show');
     void el.offsetWidth;
     el.classList.add('show');
+    sfx.discover();
   }
 
   private maybeReturningNpc(poi: PoiKind): NPC | undefined {
@@ -605,6 +614,7 @@ export class Game {
   private async runEvent(ctx: EventContext, preset?: GameEvent) {
     const s = this.s;
     ctx.terrain ??= terrainName(ctx.hex, s.seed);
+    if (ctx.poi !== 'wild' && ctx.poi !== 'quest') this.setScene(ctx.hex, ctx.poi as SceneCtx['poi']);
     const sheet = new Sheet('event');
     const lmDef = ctx.landmark ? LANDMARKS[ctx.landmark as LandmarkKind] : null;
     const kindLabel = `${lmDef ? `${lmDef.icon} ${lmDef.name}` : POI_LABEL[ctx.poi] ?? 'Encounter'} · ${ctx.regionName}`;
@@ -846,6 +856,7 @@ export class Game {
     const h0 = ensureHero(npc, s.player.level);
     h0.hp = Math.max(h0.hp, Math.ceil(h0.maxHp / 2));
     log(s, logText, 'friend');
+    sfx.join();
     const c = CLASSES[h0.cls];
     toast(`${npc.name} joined your party — a level ${h0.level} ${c.name}!${h0.points ? ` ✦ ${h0.points} talent point${h0.points > 1 ? 's' : ''} to spend.` : ''}`, 'good', 3600);
     this.persist();
@@ -870,7 +881,8 @@ export class Game {
       const allies = party(s).filter((n) => n.hero);
       const enemy = makeEnemy(spec, tier, boss, allies.length, p.level);
       const cs = startCombat(enemy);
-      setMood('combat');
+      setMood(boss ? 'boss' : 'combat');
+      setTimeout(() => sfx.roar(spec.kind), 350);
       const sheet = new Sheet('combat');
       const tray = new DiceTray();
       const logEl = h('div', { class: 'clog' }, h('div', { class: 'cl system' }, intro));
@@ -1025,6 +1037,15 @@ export class Game {
           sfx.swish();
         } else if (text === '✖') {
           pulse(host, 'fall', 600);
+        } else if (text === '🛡') {
+          sfx.block();
+        } else if (text === '💫') {
+          sfx.stun();
+        } else if (text === '⛓') {
+          sfx.chains();
+        } else if (kind === 'status') {
+          sfx.buff();
+          sparks(host, ['#ffd76a', '#b49cff'], 6, 30);
         }
         floatText(host, text, kind, { crit, weight });
       };
@@ -1044,14 +1065,18 @@ export class Game {
       };
       const bonusAct = async (id: AbilityId) => {
         setEnabled(false);
-        sfx.tap();
+        sfx.cast(p.cls);
         const beats = useBonus(s, cs, id);
         for (const b of beats) await playBeat(b);
         setEnabled(true);
       };
       const act = async (a: Action) => {
         setEnabled(false);
-        sfx.tap();
+        if (a === 'potion') sfx.potion();
+        else if (a === 'defend') sfx.block();
+        else if (a === 'flee') sfx.whoosh();
+        else if (a in ABILITIES && a !== 'first_aid') sfx.cast(p.cls);
+        else sfx.tap();
         const useInsp = inspire && p.inspiration;
         const beats = playRound(s, cs, a, useInsp);
         if (a === 'talk' && (cs.end === 'friend' || cs.end === 'flee')) track(s).talks++;
@@ -1073,6 +1098,7 @@ export class Game {
           s.stats.kills++;
           s.stats.chapterKills++;
           sfx.slay();
+          stinger('victory');
           vibrate([40, 30, 120]);
           await slay(sprite, foeCard, panel, boss);
           const xp = Math.round(enemy.xp * (hasOmen(s, 'blood-moon') ? 1.5 : 1));
@@ -1116,7 +1142,7 @@ export class Game {
         save(s);
         const close = async () => {
           sheet.close();
-          setMood(moodForBiome(biomeAt(s.pos, s.seed)));
+          this.setScene();
           this.persist();
           if (levels) await this.levelUp(levels);
           if (end === 'down') await this.downed();
@@ -1125,6 +1151,8 @@ export class Game {
         if (end === 'down') {
           logEl.appendChild(h('div', { class: 'cl result down' }, '💀 You fall…'));
           flash(panel, 'down');
+          sfx.downed();
+          stinger('defeat');
           await wait(900);
           return close();
         }
@@ -1166,7 +1194,7 @@ export class Game {
     s.tiles[key(q.target)] = { ...(s.tiles[key(q.target)] || {}), done: 1, note: q.title };
     s.quest = null;
     this.persist();
-    sfx.level();
+    sfx.questDone();
     vibrate([60, 40, 60, 40, 200]);
     const m = modal('quest-done has-scene');
     m.card.append(
@@ -1290,6 +1318,7 @@ export class Game {
 
   private async shop(tier: number, seedKey: string) {
     const s = this.s, p = s.player;
+    this.setScene(s.pos, 'market');
     const r = mulberry32(hashString(seedKey + s.day));
     const stock: (Item & { price: number; sold?: boolean })[] = Array.from({ length: 3 }, () => {
       const it = randomItem(p, tier, r);
@@ -1307,7 +1336,7 @@ export class Game {
         h('h2', { class: 'ev-title' }, 'Wares & Wonders'),
         h('div', { class: 'shop-list' },
           h('div', { class: 'shop-item' }, h('span', { class: 'si-icon', html: potionArt() }), h('div', null, h('b', null, 'Healing Potion'), h('small', null, `Heals 2d4+4 · you have ${p.potions}`)),
-            h('button', { class: 'buy', disabled: p.gold < potionPrice || p.potions >= 8, onclick: () => { p.gold -= potionPrice; p.potions++; track(s).buys++; sfx.coin(); this.persist(); render(); } }, `${potionPrice}g`)),
+            h('button', { class: 'buy', disabled: p.gold < potionPrice || p.potions >= 8, onclick: () => { p.gold -= potionPrice; p.potions++; track(s).buys++; sfx.buy(); this.persist(); render(); } }, `${potionPrice}g`)),
           ...stock.map((it) => h('div', { class: `shop-item ${it.sold ? 'sold' : ''}` },
             itemIcon(it),
             h('div', null, h('b', null, it.name), h('small', null, `${itemDesc(it)} · ${compareTo(p, it)}`)),
@@ -1316,7 +1345,7 @@ export class Game {
               track(s).buys++;
               const { price: _price, sold: _sold, ...item } = it;
               const who = stowLoot(s, item);
-              sfx.coin();
+              sfx.buy();
               toast(`Bought ${it.name}${who ? lootNote(who) : ' (in bag)'}`, 'gold');
               this.persist(); render();
             } }, it.sold ? 'SOLD' : `${it.price}g`))),
@@ -1325,12 +1354,13 @@ export class Game {
         h('div', { class: 'shop-list' }, ...p.bag.map((it) => h('div', { class: 'shop-item' },
           itemIcon(it),
           h('div', null, h('b', null, it.name), h('small', null, itemDesc(it))),
-          h('button', { class: 'buy sell', onclick: () => { p.bag = p.bag.filter((x) => x.id !== it.id); p.gold += sellValue(it); sfx.coin(); this.persist(); render(); } }, `+${sellValue(it)}g`)))),
+          h('button', { class: 'buy sell', onclick: () => { p.bag = p.bag.filter((x) => x.id !== it.id); p.gold += sellValue(it); sfx.sell(); this.persist(); render(); } }, `+${sellValue(it)}g`)))),
         h('button', { class: 'btn btn-primary wide', onclick: () => sheet.close() }, 'Done'),
       ));
     };
     render();
     await sheet.done;
+    this.setScene();
   }
 
   // ================= Camp / chapter end =================
@@ -1361,6 +1391,8 @@ export class Game {
       h('div', { class: 'campfire' }, h('span', { class: 'flame f1' }), h('span', { class: 'flame f2' }), h('span', { class: 'flame f3' }), h('span', { class: 'logs' })),
       h('p', { class: 'muted center' }, aiEnabled() ? 'The bard by the fire writes today\'s chapter…' : 'The fire crackles as you recount the day…')));
     setMood('camp');
+    setAmbience(CAMP_AMBIENCE);
+    sfx.camp();
     const out = await genChapterEnd(s);
     const goldDelta = s.player.gold - s.stats.chapterStartGold;
     const explored = s.stats.chapterExplored, kills = s.stats.chapterKills;
@@ -1396,7 +1428,8 @@ export class Game {
     stopSpeech();
     const omen = startDay(s);
     trackSeen(s, 'omens', omen.id);
-    setMood(moodForBiome(biomeAt(s.pos, s.seed)));
+    this.setScene();
+    sfx.dawn();
     s.stats.chapterStartGold = s.player.gold;
     s.stats.chapterKills = 0;
     s.stats.chapterExplored = 0;
@@ -1437,7 +1470,7 @@ export class Game {
           h('button', { class: 'buy', disabled: !p.potions || p.hp >= p.maxHp, onclick: () => {
             p.potions--;
             const amt = heal(p, rollDice(ph.n, ph.sides).reduce((a, b) => a + b, 0) + ph.bonus);
-            sfx.heal();
+            sfx.potion();
             toast(`+${amt} HP`, 'good');
             this.persist(); render();
           } }, 'Drink')),
@@ -1447,7 +1480,7 @@ export class Game {
         ...p.bag.map((it) => h('div', { class: 'shop-item bag-item' }, itemIcon(it),
           h('div', null, h('b', null, it.name), h('small', null, `${itemDesc(it)} · ${compareTo(p, it)}`)),
           h('div', { class: 'bag-btns' },
-            h('button', { class: 'buy', onclick: () => { equip(p, it.id); sfx.tap(); this.persist(); render(); } }, 'Equip'),
+            h('button', { class: 'buy', onclick: () => { equip(p, it.id); sfx.equip(); this.persist(); render(); } }, 'Equip'),
             ...allies.map((n) => h('button', { class: 'buy give', 'aria-label': `Give to ${n.name}`, title: `${n.name}: ${compareTo(n.hero!, it)}`, onclick: () => {
               giveItem(p, n.hero!, it.id);
               remember(n, `${p.name} gave them ${it.name}`);
@@ -1483,13 +1516,14 @@ export class Game {
                 hero.hp = Math.max(0, hero.hp);
                 const amt = heal(hero, rollDice(ph.n, ph.sides).reduce((a, b) => a + b, 0) + ph.bonus);
                 remember(n, `${p.name} shared a potion with them${was <= 0 ? ' when they had fallen' : ''}`);
-                sfx.heal();
+                sfx.potion();
                 toast(`${n.name} +${amt} HP`, 'good');
                 this.persist(); render();
               } }, `🧪 Potion (${p.potions})`),
               h('button', { class: 'link', onclick: () => {
                 if (!confirm(`Part ways with ${n.name}?`)) return;
                 n.inParty = false;
+                sfx.part();
                 remember(n, `Parted ways with ${p.name} on day ${s.day}`);
                 this.persist(); render();
               } }, 'Part ways'),
@@ -1512,6 +1546,7 @@ export class Game {
   }
 
   openJournal() {
+    sfx.page();
     const s = this.s;
     const sheet = new Sheet('panel', { dismissable: true });
     const today = chapterLog(s).filter((l) => l.kind !== 'info');

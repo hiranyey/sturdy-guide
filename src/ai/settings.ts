@@ -7,6 +7,8 @@ export interface Settings {
   sfxVol: number; // 0..1
   music: boolean;
   musicVol: number; // 0..1
+  ambience: boolean;
+  ambVol: number; // 0..1
   textScale: number; // 0.9..1.3
   reduceMotion: boolean;
   readAloud: boolean;
@@ -30,7 +32,7 @@ const prefersReducedMotion = (() => {
 
 const defaults: Settings = {
   apiKey: '', model: DEFAULT_MODEL, tapToRoll: true, sound: true, textSpeed: 2,
-  sfxVol: 0.8, music: false, musicVol: 0.5, textScale: 1, reduceMotion: prefersReducedMotion, readAloud: false,
+  sfxVol: 0.8, music: true, musicVol: 0.45, ambience: true, ambVol: 0.6, textScale: 1, reduceMotion: prefersReducedMotion, readAloud: false,
   installDismissedAt: 0,
 };
 

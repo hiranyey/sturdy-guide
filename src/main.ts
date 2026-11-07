@@ -5,6 +5,8 @@ import { MapView } from './ui/map';
 import { Game } from './ui/game';
 import { showTitle, showCreate, hideScreen, showLoading } from './ui/screens';
 import { toast } from './ui/dom';
+import { setMood } from './ui/music';
+import { setAmbience, TITLE_AMBIENCE } from './ui/ambience';
 import { createGame, load, save, reveal } from './core/state';
 import { finishOAuth } from './ai/openrouter';
 import { genPremise } from './ai/director';
@@ -30,6 +32,8 @@ function title() {
   map.demo = true;
   map.snapTo({ q: 0, r: 0 });
   document.body.classList.add('at-title');
+  setMood('title');
+  setAmbience(TITLE_AMBIENCE);
   showTitle({
     onContinue: () => {
       const s = load();

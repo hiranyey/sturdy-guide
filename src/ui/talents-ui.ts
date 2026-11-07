@@ -110,7 +110,7 @@ export function openTalents(s: GameState, startWith = 'you', onChange: () => voi
           ? h('button', { class: 'btn btn-primary wide', onclick: () => {
               if (!learn(hero, sel.id)) return;
               if (m.npc) { const t = track(s); t.mentored = (t.mentored ?? 0) + 1; }
-              sfx.level();
+              sfx.talent();
               vibrate([20, 30, 60]);
               toast(`${m.id === 'you' ? 'You' : m.name} learned ${sel.icon} ${sel.name}!`, 'gold');
               onChange();
@@ -141,7 +141,7 @@ export function openTalents(s: GameState, startWith = 'you', onChange: () => voi
             const got = autoLearn(m.npc!);
             if (got.length) {
               const t = track(s); t.mentored = (t.mentored ?? 0) + 1;
-              sfx.level();
+              sfx.talent();
               toast(`${m.name} chose ${got.map((n) => `${n.icon} ${n.name}`).join(', ')}`, 'gold', 3200);
               onChange();
             }
