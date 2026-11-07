@@ -7,6 +7,7 @@ import { wipe } from '../core/state';
 import { sfx, applyVolumes } from './audio';
 import { refreshMusic } from './music';
 import { refreshAmbience } from './ambience';
+import { checkForUpdate } from './updates';
 import { applyPrefs, speechSupported, speak, stopSpeech } from './prefs';
 import { installAvailable, offerInstall, isStandalone } from './install';
 
@@ -81,7 +82,17 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
         location.reload();
       } }, 'Abandon journey') : null,
       h('button', { class: 'btn wide', onclick: () => sheet.close() }, 'Close'),
-      h('p', { class: 'app-version' }, `Hexbound v${__APP_VERSION__}`),
+      h('p', { class: 'app-version' }, `Hexbound v${__APP_VERSION__} · `,
+        h('button', { class: 'link', onclick: async (e: Event) => {
+          const b = e.currentTarget as HTMLButtonElement;
+          b.disabled = true;
+          b.textContent = 'Checking…';
+          const r = await checkForUpdate();
+          b.disabled = false;
+          b.textContent = 'Check for updates';
+          if (r === 'latest') toast('You have the latest version.', 'good');
+          else if (r === 'offline') toast('Could not reach the server — try again when online.', 'bad');
+        } }, 'Check for updates')),
     );
   };
   render();

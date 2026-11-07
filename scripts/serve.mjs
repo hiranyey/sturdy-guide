@@ -39,6 +39,17 @@ function fileFor(url) {
   return inRoot(file) ? file : null;
 }
 
+// Hashed build files never change, so phones may keep them forever. Everything
+// that decides which version runs (the page, the service worker, version.json)
+// must be revalidated every time, or installed apps get stuck on an old release.
+function cacheControl(file) {
+  const rel = file.slice(root.length).split(sep).join('/').replace(/^\//, '');
+  if (rel.startsWith('assets/')) return 'public, max-age=31536000, immutable';
+  if (rel === 'sw.js' || rel === 'version.json') return 'no-store';
+  if (rel.endsWith('.html') || rel.endsWith('.webmanifest')) return 'no-cache';
+  return 'public, max-age=86400';
+}
+
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
   if (pathname === '/health' || pathname === '/health/') {
@@ -65,7 +76,7 @@ const server = createServer(async (req, res) => {
   }
   try {
     const data = await readFile(file);
-    res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream' });
+    res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': cacheControl(file) });
     res.end(req.method === 'HEAD' ? undefined : data);
   } catch {
     res.writeHead(404).end('Not found');

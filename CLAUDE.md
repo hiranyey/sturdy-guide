@@ -37,3 +37,4 @@ This updates `package.json` and `package-lock.json`. Don't create git tags. Neve
 - Art is procedural SVG/canvas. Don't add external image assets. SVG gradient ids must be unique per call.
 - The player and companions share the `Hero` type; give new combat rules to both.
 - Deploys: pushes to `main` build the Docker image via `.github/workflows/deploy.yml`.
+- PWA updates: the service worker is built from `src/pwa/sw.js` by the `pwa()` plugin in `vite.config.ts` (version + file list baked in, plus `dist/version.json`). The page is network-first, `/assets/*` cache-first. `src/ui/updates.ts` polls `version.json` when the app returns to the foreground and shows an "Update" banner. Don't add a static `public/sw.js`, and keep `scripts/serve.mjs` sending `no-store`/`no-cache` for `sw.js`, `version.json` and `index.html`.

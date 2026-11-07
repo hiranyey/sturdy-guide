@@ -794,3 +794,10 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
 .pchip > .fx-strike { inset: auto; left: -4px; top: 50%; width: 46px; height: 46px; transform: translateY(-50%); }
 .pchip > .float { left: 26px; }
 .party-row:not(.n1) .pchip > .float { left: 50%; }
+
+/* ---------- App update banner ---------- */
+.update-banner { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; width: min(440px, calc(100vw - 24px)); padding: 10px 10px 10px 14px; border-radius: 16px; background: rgba(15,18,34,0.97); border: 1px solid var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.6); animation: rise 0.3s ease; }
+.update-banner .ub-text { flex: 1; font-size: 0.9rem; color: var(--gold-hi); }
+.update-banner .ub-go { padding: 8px 14px; font-size: 0.9rem; }
+.update-banner .ub-later { background: none; border: 0; color: var(--muted); font-size: 1rem; padding: 6px; }
+.app-version .link { background: none; border: 0; padding: 0; color: var(--gold-hi); text-decoration: underline; font: inherit; cursor: pointer; }

@@ -5,6 +5,7 @@ import { MapView } from './ui/map';
 import { Game } from './ui/game';
 import { showTitle, showCreate, hideScreen, showLoading } from './ui/screens';
 import { toast } from './ui/dom';
+import { initUpdates } from './ui/updates';
 import { setMood } from './ui/music';
 import { setAmbience, TITLE_AMBIENCE } from './ui/ambience';
 import { createGame, load, save, reveal } from './core/state';
@@ -72,9 +73,7 @@ async function boot() {
   window.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && current) save(current);
   });
-  if ('serviceWorker' in navigator && import.meta.env.PROD) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
+  initUpdates(() => { if (current) save(current); });
 }
 
 if (import.meta.env.DEV) {
