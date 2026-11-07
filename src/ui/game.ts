@@ -11,6 +11,7 @@ import { sfx } from './audio';
 import { portraitEl } from './portrait';
 import { heroPortraitEl } from './art/heroes';
 import { foeArt } from './art/foes';
+import { LiveBar, floatText, floatKind, pulse, sparks, strike, flash, hitStop, slay, calm, STRIKE_FOR } from './combat-fx';
 import { sceneArt, combatBackdrop, type SceneTime } from './art/scenes';
 import { itemArt, potionArt, goldArt } from './art/items';
 import { openSettings } from './settings-sheet';
@@ -32,7 +33,7 @@ import { pick, chance, mulberry32, hashString, randInt } from '../core/rng';
 import { genEvent, genOutcome, genRegion, genQuest, genChapterEnd, type Outcome } from '../ai/director';
 import { aiEnabled } from '../ai/settings';
 import { STATS, STAT_NAMES } from '../core/types';
-import type { Choice, EnemySpec, EventContext, GameEvent, GameState, Hero, Item, PoiKind, Stat, NPC } from '../core/types';
+import type { ClassId, Choice, EnemySpec, EventContext, GameEvent, GameState, Hero, Item, PoiKind, Stat, NPC } from '../core/types';
 
 const POI_LABEL: Record<string, string> = {
   village: 'Village', ruin: 'Ruins', cave: 'Cave', shrine: 'Shrine', camp: 'Camp', tower: 'Tower',
@@ -873,7 +874,8 @@ export class Game {
       const sheet = new Sheet('combat');
       const tray = new DiceTray();
       const logEl = h('div', { class: 'clog' }, h('div', { class: 'cl system' }, intro));
-      const foeHp = h('div');
+      const foeBar = new LiveBar('foe');
+      const foeHp = h('div', null, foeBar.el);
       const intentEl = h('div', { class: 'intent' });
       const sprite = h('div', { class: `foe-sprite ${boss ? 'boss' : ''}`, html: foeArt(spec, { tier, boss }) });
       const foeCard = h('div', { class: 'foe-card' }, sprite,
@@ -893,29 +895,32 @@ export class Game {
 
       // Party row: one chip per member with their own HP bar; floating numbers land on them.
       const ms = members(s);
-      const chips = new Map<string, { el: HTMLElement; hp: HTMLElement }>();
+      const chips = new Map<string, { el: HTMLElement; hp: LiveBar }>();
       const partyRow = h('div', { class: `party-row n${ms.length}` }, ...ms.map((m) => {
-        const hp = h('div', { class: 'pc-hp' });
+        const hp = new LiveBar('hp');
         const el = h('div', { class: `pchip ${m.id === 'you' ? 'me' : ''}` }, avatar(m, m.id === 'you' ? 34 : 28),
-          h('div', { class: 'pc-body' }, h('small', { class: 'pc-name' }, m.id === 'you' ? CLASSES[p.cls].name : `${m.name.split(' ')[0]} · ${CLASSES[m.hero.cls].glyph}`), hp));
+          h('div', { class: 'pc-body' }, h('small', { class: 'pc-name' }, m.id === 'you' ? CLASSES[p.cls].name : `${m.name.split(' ')[0]} · ${CLASSES[m.hero.cls].glyph}`), h('div', { class: 'pc-hp' }, hp.el)));
         chips.set(m.id, { el, hp });
         return el;
       }));
       abilRow.appendChild(inspBtn);
       // The backdrop lives in the panel, behind the scrolling body.
-      sheet.body.parentElement!.prepend(h('div', { class: 'combat-backdrop', 'aria-hidden': 'true', html: combatBackdrop({ biome: biomeAt(s.pos, s.seed), seed: hashString(`${s.seed}:${key(s.pos)}`), time: this.timeOfDay() }) }));
+      const panel = sheet.body.parentElement!;
+      panel.prepend(h('div', { class: 'combat-backdrop', 'aria-hidden': 'true', html: combatBackdrop({ biome: biomeAt(s.pos, s.seed), seed: hashString(`${s.seed}:${key(s.pos)}`), time: this.timeOfDay() }) }));
       sheet.set(h('div', { class: 'combat-wrap' }, foeCard, intentEl, tray.el, logEl, partyRow, abilRow, actionsEl));
 
       const refresh = () => {
-        foeHp.replaceChildren(bar(enemy.hp, enemy.maxHp, 'foe', `${enemy.hp}/${enemy.maxHp}`));
+        foeBar.set(enemy.hp, enemy.maxHp, 'foe', `${enemy.hp}/${enemy.maxHp}`);
+        sprite.classList.toggle('wounded', enemy.hp > 0 && enemy.hp / enemy.maxHp < 0.3);
+        panel.classList.toggle('danger', !cs.end && p.hp > 0 && p.hp / p.maxHp < 0.3);
         const units = partyUnits(s);
         for (const u of units) {
           const c = chips.get(u.id);
           if (!c) continue;
           const down = u.hero.hp <= 0;
           c.el.classList.toggle('down', down);
-          c.hp.replaceChildren(bar(u.hero.hp, u.hero.maxHp, `hp ${down ? 'down' : u.hero.hp / u.hero.maxHp < 0.35 ? 'low' : ''}`,
-            down ? '✖ down' : u.isPlayer ? `♥ ${u.hero.hp}/${u.hero.maxHp}${units.length < 3 ? ` · AC ${unitAc(cs, units, u)}` : ''}` : `${u.hero.hp}/${u.hero.maxHp}`));
+          c.hp.set(u.hero.hp, u.hero.maxHp, `hp ${down ? 'down' : u.hero.hp / u.hero.maxHp < 0.35 ? 'low' : ''}`,
+            down ? '✖ down' : u.isPlayer ? `♥ ${u.hero.hp}/${u.hero.maxHp}${units.length < 3 ? ` · AC ${unitAc(cs, units, u)}` : ''}` : `${u.hero.hp}/${u.hero.maxHp}`);
         }
         const it = intentText(enemy);
         intentEl.className = `intent ${enemy.stun > 0 ? 'stunned' : enemy.intent}`;
@@ -970,36 +975,71 @@ export class Game {
           b.title = `${ABILITIES[id].bonus ? 'Bonus action · ' : ''}${left} left`;
         }
       };
-      const floatText = (host: HTMLElement, text: string, cls2: string) => {
-        const f = h('span', { class: `float ${cls2}` }, text);
-        host.appendChild(f);
-        setTimeout(() => f.remove(), 1000);
-      };
       const addLine = (b: Beat) => {
         const line = h('div', { class: `cl ${b.actor} ${b.tone}` }, b.text);
         logEl.appendChild(line);
         logEl.scrollTop = logEl.scrollHeight;
       };
       const nameOf = (id?: string) => (!id || id === 'you' ? 'You' : s.npcs[id]?.name.split(' ')[0] ?? 'Ally');
+      const clsOf = (id?: string): ClassId => (!id || id === 'you' ? p.cls : s.npcs[id]?.hero?.cls ?? 'warrior');
+      const maxHpOf = (id?: string) => (!id || id === 'you' ? p.maxHp : s.npcs[id]?.hero?.maxHp ?? 10);
+      /** The moment a blow, heal or miss lands: strike marks, flashes, sounds, the floating number. */
+      const impact = async (b: Beat) => {
+        const text = b.floatText!;
+        const onEnemy = b.floatOn === 'enemy';
+        const kind = floatKind(text, onEnemy);
+        const host = onEnemy ? sprite : chips.get(b.target ?? 'you')?.el ?? partyRow;
+        const crit = !!b.d20?.crit && (kind === 'dmg' || kind === 'hurt');
+        const amount = Number(text.replace(/[^0-9]/g, '')) || 0;
+        const weight = amount / (onEnemy ? enemy.maxHp : maxHpOf(b.target));
+        // A foe's attack winds up before it lands (or whiffs).
+        if (b.actor === 'foe' && !onEnemy && (kind === 'hurt' || kind === 'miss')) {
+          pulse(sprite, 'lunge', 360);
+          await wait(calm() ? 0 : 150);
+        }
+        if (kind === 'dmg') {
+          if (crit) {
+            await hitStop(sprite, 120);
+            flash(panel, 'crit');
+            pulse(foeCard, 'rock', 400);
+            sparks(sprite, ['#ffd76a', '#ffffff', '#ffb13b'], 14, 62);
+            sfx.smash();
+            vibrate([30, 40, 90]);
+          } else { sfx.hit(); vibrate(25); }
+          strike(sprite, STRIKE_FOR[clsOf(b.who)], crit);
+          pulse(sprite, 'hit', 400);
+        } else if (kind === 'hurt') {
+          strike(host, 'claw', crit);
+          if ((b.target ?? 'you') === 'you') {
+            pulse(document.body, 'shake', 400);
+            flash(panel, 'hurt');
+            vibrate(crit ? [70, 30, 110] : [50, 30, 50]);
+          } else { pulse(host, 'hit', 400); vibrate(20); }
+          if (crit) sfx.smash(); else sfx.hit();
+        } else if (kind === 'heal') {
+          pulse(host, 'healed', 700);
+          sparks(host, ['#6effa0', '#c8ffd8'], 6, 30);
+          sfx.heal();
+        } else if (kind === 'miss') {
+          pulse(host, 'dodge', 420);
+          sfx.swish();
+        } else if (text === '✖') {
+          pulse(host, 'fall', 600);
+        }
+        floatText(host, text, kind, { crit, weight });
+      };
       const playBeat = async (b: Beat) => {
         const label = b.actor === 'you' ? 'You' : b.actor === 'foe' ? enemy.name : b.actor === 'ally' ? nameOf(b.who) : 'Fate';
+        // Light up whoever is acting.
+        const actorChip = b.actor === 'you' || b.actor === 'ally' ? chips.get(b.who ?? 'you')?.el : undefined;
+        actorChip?.classList.add('acting');
         if (b.d20) await tray.showD20(b.d20, label, b.actor !== 'you' && b.actor !== 'system');
         else tray.clear();
         if (b.dmg) await tray.showDamage(b.dmg, b.floatText?.startsWith('+') ? 'healed' : 'damage');
         addLine(b);
-        if (b.floatOn && b.floatText) {
-          const neg = b.floatText.startsWith('-');
-          const host = b.floatOn === 'enemy' ? sprite : chips.get(b.target ?? 'you')?.el ?? partyRow;
-          floatText(host, b.floatText, neg ? (b.floatOn === 'enemy' ? 'dmg' : 'hurt') : b.floatText.startsWith('+') ? 'heal' : 'miss');
-          if (neg && b.floatOn === 'enemy') { sprite.classList.remove('hit'); void sprite.offsetWidth; sprite.classList.add('hit'); sfx.hit(); vibrate(25); }
-          if (neg && b.floatOn === 'unit') {
-            if ((b.target ?? 'you') === 'you') { document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); vibrate([50, 30, 50]); }
-            else { host.classList.remove('hit'); void host.offsetWidth; host.classList.add('hit'); vibrate(20); }
-            sfx.hit();
-          }
-          if (b.floatText.startsWith('+')) sfx.heal();
-        }
+        if (b.floatOn && b.floatText) await impact(b);
         refresh();
+        actorChip?.classList.remove('acting');
         await wait(b.actor === 'you' ? 450 : 350);
       };
       const bonusAct = async (id: AbilityId) => {
@@ -1032,7 +1072,9 @@ export class Game {
         if (end === 'win') {
           s.stats.kills++;
           s.stats.chapterKills++;
-          sprite.classList.add('defeated');
+          sfx.slay();
+          vibrate([40, 30, 120]);
+          await slay(sprite, foeCard, panel, boss);
           const xp = Math.round(enemy.xp * (hasOmen(s, 'blood-moon') ? 1.5 : 1));
           const gold = Math.round(enemy.gold * (hasOmen(s, 'golden-hour') ? 1.5 : 1) * goldMult(s));
           p.gold += gold;
@@ -1043,7 +1085,6 @@ export class Game {
             summary.push(`${it.name} (${itemDesc(it)})${lootNote(stowLoot(s, it))}`);
           }
           if (chance(0.25) && p.potions < 6) { p.potions++; summary.push('+1 potion'); }
-          sfx.crit();
         } else if (end === 'friend') {
           const npc = addNpc(s, { name: `${enemy.name.replace(/^(Road |Desert |Wrecker )/, '')} ${pick(['Ash', 'Kell', 'Brin', 'Moss', 'Vey', 'Tarn'])}`, role: enemy.name.toLowerCase(), look: `${enemy.emoji} a former foe`, personality: 'wary but grateful' }, this.regionName(s.pos));
           npc.affinity = Math.max(npc.affinity, 35);
@@ -1083,6 +1124,7 @@ export class Game {
         };
         if (end === 'down') {
           logEl.appendChild(h('div', { class: 'cl result down' }, '💀 You fall…'));
+          flash(panel, 'down');
           await wait(900);
           return close();
         }

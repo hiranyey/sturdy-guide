@@ -340,7 +340,7 @@ body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hid
 .foe-sprite.hit { animation: hit 0.4s ease; }
 @keyframes hit { 0% { filter: brightness(3) saturate(0); transform: translateX(0); } 30% { transform: translateX(-10px) rotate(-6deg); } 60% { transform: translateX(8px) rotate(4deg); } 100% { filter: none; transform: none; } }
 .foe-sprite.defeated { animation: defeat 0.9s ease forwards; }
-@keyframes defeat { to { transform: translateY(14px) rotate(25deg) scale(0.6); opacity: 0.25; filter: grayscale(1); } }
+@keyframes defeat { 0% { transform: none; filter: brightness(2.5); } 20% { transform: translateX(-5px) rotate(-4deg); } 35% { transform: translateX(5px) rotate(3deg); filter: brightness(1.2) saturate(0.4); } 100% { transform: translateY(16px) rotate(18deg) scale(0.55); opacity: 0; filter: grayscale(1) blur(3px); } }
 .foe-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .foe-name { font-family: var(--head); font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
 .boss-tag { font-size: 0.6rem; background: var(--gold); color: #2a1a05; padding: 2px 6px; border-radius: 6px; letter-spacing: 0.1em; }
@@ -392,7 +392,7 @@ body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hid
 .float.hurt { color: #ff5a5a; }
 .float.heal { color: #6effa0; }
 .float.miss { color: #ccc; font-size: 1.1rem; }
-@keyframes floatUp { from { transform: translate(-50%, 0) scale(0.6); opacity: 1; } 30% { transform: translate(-50%, -20px) scale(1.2); } to { transform: translate(-50%, -50px) scale(1); opacity: 0; } }
+@keyframes floatUp { from { transform: translate(calc(-50% + var(--fx, 0px)), 0) scale(calc(var(--fs, 1) * 0.6)); opacity: 1; } 30% { transform: translate(calc(-50% + var(--fx, 0px)), -20px) scale(calc(var(--fs, 1) * 1.2)); } 75% { opacity: 1; } to { transform: translate(calc(-50% + var(--fx, 0px) * 1.6), -54px) scale(var(--fs, 1)); opacity: 0; } }
 body.shake #app, body.shake .sheet-panel { animation: shakeX 0.35s; }
 
 /* ---------- Toasts ---------- */
@@ -722,3 +722,75 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
 .shop-list + .ev-kind { margin-top: 14px; }
 .combat-backdrop { opacity: 0.3; }
 .combat-backdrop svg { filter: saturate(0.8); }
+
+/* ---------- Combat juice (combat-fx.ts) ---------- */
+.bar.live .bar-trail { position: absolute; inset: 0 auto 0 0; border-radius: 8px; background: rgba(255,236,190,0.85); transition: width 0.55s cubic-bezier(.4,0,.6,1); }
+.bar.live .bar-trail.heal { background: rgba(110,255,160,0.55); box-shadow: 0 0 8px rgba(110,255,160,0.6); }
+.bar.live .bar-fill { transition: width 0.45s cubic-bezier(.2,.8,.2,1); }
+.bar.live.jolt { animation: jolt 0.35s ease; }
+@keyframes jolt { 0% { filter: brightness(2); transform: translateX(0); } 25% { transform: translateX(-3px); } 50% { transform: translateX(3px); } 100% { filter: none; transform: none; } }
+
+.float.crit { color: #ffe27a; text-shadow: 0 0 12px rgba(255,190,60,0.9), 0 2px 6px #000; animation-duration: 1.3s; }
+.float small { display: block; font-size: 0.5em; letter-spacing: 0.15em; text-align: center; color: #fff; margin-bottom: -4px; }
+.float.status { font-size: 1.5rem; filter: drop-shadow(0 2px 4px #000); }
+.float.miss { font-style: italic; letter-spacing: 0.04em; }
+
+.fx-spark { position: absolute; left: 50%; top: 50%; border-radius: 50%; pointer-events: none; z-index: 4; animation: spark 0.8s cubic-bezier(.1,.8,.3,1) forwards; box-shadow: 0 0 8px currentColor; }
+
+.fx-strike { position: absolute; inset: -12%; pointer-events: none; z-index: 3; }
+.fx-strike svg { width: 100%; height: 100%; overflow: visible; }
+.fx-strike .stroke { stroke-dasharray: 140; stroke-dashoffset: 140; animation: stroke 0.22s ease-out forwards, strikeFade 0.35s ease-in 0.3s forwards; filter: drop-shadow(0 0 4px rgba(255,255,255,0.8)); }
+.fx-strike .s2 { animation-delay: 0.08s, 0.36s; }
+.fx-strike .s3 { animation-delay: 0.16s, 0.42s; }
+.fx-strike.claw .stroke { filter: drop-shadow(0 0 4px rgba(255,60,60,0.9)); }
+@keyframes stroke { to { stroke-dashoffset: 0; } }
+@keyframes strikeFade { to { opacity: 0; } }
+.fx-strike .boom { transform-origin: 50% 52%; animation: boom 0.55s ease-out forwards; }
+.fx-strike .ring { transform-origin: 50% 50%; animation: ring 0.5s ease-out forwards; }
+.fx-strike .ring.s2 { animation-delay: 0.12s; opacity: 0; animation-fill-mode: both; }
+@keyframes boom { 0% { transform: scale(0.2); opacity: 1; } 60% { opacity: 0.9; } 100% { transform: scale(1.15); opacity: 0; } }
+@keyframes ring { 0% { transform: scale(0.3); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+.fx-strike .nt { font-size: 22px; fill: #e6d4ff; font-weight: 700; animation: note 0.65s ease-out forwards; }
+.fx-strike .n2 { animation-delay: 0.06s; } .fx-strike .n3 { animation-delay: 0.12s; }
+@keyframes note { 0% { opacity: 0; transform: translateY(8px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-16px); } }
+
+.fx-flash { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 20; animation: fxFlash 0.5s ease-out forwards; }
+.fx-flash.crit { background: radial-gradient(circle at 50% 20%, rgba(255,230,140,0.55), rgba(255,200,80,0.15) 60%, transparent); }
+.fx-flash.hurt { background: radial-gradient(ellipse at 50% 60%, transparent 40%, rgba(220,30,30,0.55)); }
+.fx-flash.slay { background: radial-gradient(circle at 25% 15%, rgba(255,255,255,0.6), rgba(255,170,60,0.2) 50%, transparent 80%); }
+.fx-flash.down { background: radial-gradient(ellipse at 50% 50%, rgba(80,0,0,0.3), rgba(0,0,0,0.85)); animation: fxDown 1.4s ease-in forwards; }
+@keyframes fxFlash { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fxDown { from { opacity: 0; } to { opacity: 1; } }
+
+/* Low HP: a slow red heartbeat around the fight. */
+.sheet-panel.danger::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 19; box-shadow: inset 0 0 50px rgba(220,30,30,0.5); animation: heartbeat 1.1s ease-in-out infinite; }
+@keyframes heartbeat { 0%, 100% { opacity: 0.35; } 15% { opacity: 1; } 30% { opacity: 0.5; } 45% { opacity: 0.85; } }
+
+.foe-sprite.freeze.freeze, .pchip.freeze.freeze { animation: none; filter: brightness(3) saturate(0); }
+.foe-sprite.lunge { animation: lunge 0.36s cubic-bezier(.3,0,.3,1); }
+@keyframes lunge { 0% { transform: none; } 30% { transform: translate(4px, -6px) scale(0.94); } 60% { transform: translate(-2px, 14px) scale(1.18); filter: brightness(1.3); } 100% { transform: none; } }
+.foe-sprite.dodge, .pchip.dodge { animation: dodge 0.42s ease; }
+@keyframes dodge { 0% { transform: none; } 35% { transform: translateX(18px) skewX(-10deg); opacity: 0.6; } 100% { transform: none; } }
+.foe-sprite.healed, .pchip.healed { animation: healed 0.7s ease; }
+@keyframes healed { 0% { box-shadow: 0 0 0 0 rgba(110,255,160,0.9); } 100% { box-shadow: 0 0 0 14px rgba(110,255,160,0); } }
+.foe-sprite.wounded:not(.hit):not(.lunge):not(.dodge):not(.healed):not(.freeze):not(.defeated) { animation: idleHurt 1.3s ease-in-out infinite; }
+.foe-sprite.wounded svg.foe-art { filter: saturate(1.3) drop-shadow(0 0 6px rgba(255,40,40,0.7)); }
+@keyframes idleHurt { 50% { transform: translateY(3px) scale(0.98, 1.02) rotate(-2deg); } }
+.foe-sprite.defeated { animation: defeat 1s ease forwards; }
+.foe-card { position: relative; }
+.foe-card.rock { animation: rock 0.4s ease; }
+@keyframes rock { 25% { transform: translateX(-6px) rotate(-1deg); } 50% { transform: translateX(6px) rotate(1deg); } 75% { transform: translateX(-3px); } }
+.foe-card.slain { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); transition: background 0.6s, border-color 0.6s; }
+.fx-stamp { position: absolute; left: 10px; top: 50%; width: 82px; text-align: center; font-family: var(--head); font-weight: 800; font-size: 0.82rem; letter-spacing: 0.12em; color: #ff5a4a; border: 2px solid currentColor; border-radius: 6px; padding: 2px 0; transform: translateY(-50%) rotate(-14deg); animation: stamp 0.35s cubic-bezier(.3,1.6,.5,1) both; text-shadow: 0 1px 2px #000; background: rgba(20,10,10,0.55); z-index: 5; }
+.fx-stamp.boss { color: var(--gold-hi); font-size: 0.72rem; }
+@keyframes stamp { from { transform: translateY(-50%) rotate(-14deg) scale(2.4); opacity: 0; } }
+.sheet-body.combat .fx-stamp { width: 58px; font-size: 0.62rem; }
+
+.pchip.acting { border-color: var(--gold); box-shadow: 0 0 12px rgba(255,215,106,0.45); transform: translateY(-3px); transition: transform 0.15s, box-shadow 0.15s; }
+.pchip.fall { animation: fall 0.6s ease forwards; }
+@keyframes fall { 0% { transform: none; } 30% { transform: translateY(-4px) rotate(-3deg); } 100% { transform: translateY(4px) rotate(2deg); } }
+.foe-sprite > .float.crit { top: 34%; }
+/* Claws land on the party member's portrait, not the middle of their HP bar. */
+.pchip > .fx-strike { inset: auto; left: -4px; top: 50%; width: 46px; height: 46px; transform: translateY(-50%); }
+.pchip > .float { left: 26px; }
+.party-row:not(.n1) .pchip > .float { left: 50%; }

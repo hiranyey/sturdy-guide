@@ -100,4 +100,10 @@ export const sfx = {
   heal() { [440, 554, 659].forEach((f, i) => tone(f, 0.4, 'sine', 0.1, i * 0.08)); },
   achievement() { [659, 784, 988, 1319].forEach((f, i) => tone(f, 0.45, 'triangle', 0.11, i * 0.09)); tone(1976, 0.8, 'sine', 0.04, 0.38); },
   whoosh() { click(0, 0.2, 900); click(0.05, 0.15, 700); },
+  /** A blade or claw cutting air past its target. */
+  swish() { click(0, 0.18, 1800); click(0.04, 0.12, 1200); click(0.08, 0.08, 800); },
+  /** Heavy impact: a critical blow. */
+  smash() { click(0, 0.7, 300); tone(80, 0.3, 'square', 0.08, 0, -40); tone(160, 0.2, 'sawtooth', 0.05, 0.02, -90); },
+  /** A foe falls. */
+  slay() { click(0, 0.6, 250); tone(196, 0.5, 'sawtooth', 0.06, 0, -120); [392, 494, 587, 784].forEach((f, i) => tone(f, 0.45, 'triangle', 0.1, 0.22 + i * 0.08)); },
 };
