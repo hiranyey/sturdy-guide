@@ -673,3 +673,4 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
   .sheet-body.combat .intent { padding: 5px 8px; font-size: 0.8rem; }
   .sheet-body.combat .dice-tray { min-height: 46px; }
 }
+.app-version { text-align: center; color: var(--muted); font-size: 0.78rem; letter-spacing: 0.06em; margin: 10px 0 2px; user-select: text; -webkit-user-select: text; }

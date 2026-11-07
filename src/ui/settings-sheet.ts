@@ -78,6 +78,7 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
         location.reload();
       } }, 'Abandon journey') : null,
       h('button', { class: 'btn wide', onclick: () => sheet.close() }, 'Close'),
+      h('p', { class: 'app-version' }, `Hexbound v${__APP_VERSION__}`),
     );
   };
   render();
