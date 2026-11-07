@@ -1,0 +1,80 @@
+import { key, spiral, type Hex } from './hex';
+import { newPlayer } from './rules';
+import { visionRadius } from './world';
+import type { ClassId, GameState, LogEntry, NPC, NpcSpec, Tone } from './types';
+
+const SAVE_KEY = 'hexbound.save.v1';
+
+export function createGame(name: string, cls: ClassId, tone: Tone, world: { name: string; hook: string }): GameState {
+  const seed = (Math.random() * 2 ** 31) | 0;
+  const s: GameState = {
+    version: 1, seed, createdAt: Date.now(), lastPlayed: Date.now(), tone, world,
+    player: newPlayer(name, cls),
+    pos: { q: 0, r: 0 }, day: 1, stamina: 12, maxStamina: 12,
+    tiles: { '0,0': { v: 1 } }, revealed: {}, regions: {}, npcs: {},
+    quest: null, questsDone: 0, log: [],
+    summary: world.hook, recap: '', hook: '', flags: [], chapters: [],
+    stats: { kills: 0, friends: 0, explored: 1, crits: 0, fumbles: 0, chapterStartGold: 15, chapterKills: 0, chapterExplored: 0 },
+  };
+  reveal(s, s.pos);
+  return s;
+}
+
+export function reveal(s: GameState, h: Hex, extra = 0) {
+  for (const t of spiral(h, visionRadius(h, s.seed) + extra)) s.revealed[key(t)] = 1;
+}
+
+export function save(s: GameState) {
+  s.lastPlayed = Date.now();
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+  } catch (e) {
+    console.warn('save failed', e);
+  }
+}
+
+export function load(): GameState | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as GameState;
+    return s.version === 1 ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export function wipe() {
+  localStorage.removeItem(SAVE_KEY);
+}
+
+export function log(s: GameState, text: string, kind: LogEntry['kind'] = 'info') {
+  s.log.push({ day: s.day, text, kind });
+  if (s.log.length > 80) s.log.splice(0, s.log.length - 80);
+}
+
+export function chapterLog(s: GameState) {
+  return s.log.filter((l) => l.day === s.day);
+}
+
+export function addNpc(s: GameState, spec: NpcSpec, where: string): NPC {
+  const existing = Object.values(s.npcs).find((n) => n.name === spec.name);
+  if (existing) return existing;
+  const id = `n${Object.keys(s.npcs).length + 1}`;
+  const npc: NPC = {
+    id, name: spec.name, role: spec.role || 'traveller', look: spec.look || '', personality: spec.personality || '',
+    affinity: 0, memories: [], metDay: s.day, where, inParty: false, power: Math.max(1, s.player.level),
+  };
+  s.npcs[id] = npc;
+  return npc;
+}
+
+export function party(s: GameState): NPC[] {
+  return Object.values(s.npcs).filter((n) => n.inParty);
+}
+
+export function remember(npc: NPC, memory: string) {
+  if (!memory) return;
+  npc.memories.push(memory);
+  if (npc.memories.length > 6) npc.memories.shift();
+}

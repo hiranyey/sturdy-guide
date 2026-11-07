@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#2a2f5a"/><stop offset="1" stop-color="#0f1222"/></radialGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9a7cff"/><stop offset="1" stop-color="#3a24a0"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <g transform="translate(56 56) scale(4)">
+    <polygon points="50,3 91,26.5 91,73.5 50,97 9,73.5 9,26.5" fill="#2e1f7a" stroke="#d9ceff" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="50,3 9,26.5 50,21" fill="#9a7cff" opacity="0.8"/>
+    <polygon points="50,3 91,26.5 50,21" fill="#9a7cff" opacity="0.5"/>
+    <polygon points="9,26.5 50,21 23,67" fill="#5a3fcf"/>
+    <polygon points="91,26.5 50,21 77,67" fill="#5a3fcf" opacity="0.6"/>
+    <polygon points="50,21 77,67 23,67" fill="url(#face)" stroke="#d9ceff" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M50,3 L50,21 M9,26.5 L50,21 L91,26.5 M9,26.5 L23,67 L9,73.5 M91,26.5 L77,67 L91,73.5 M23,67 L50,97 L77,67" stroke="#d9ceff" stroke-width="1.2" opacity="0.7" fill="none"/>
+    <text x="50" y="55" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, serif" font-weight="bold" font-size="22" fill="#ffd76a">20</text>
+  </g>
+</svg>
