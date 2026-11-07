@@ -1,6 +1,7 @@
 import { key, spiral, type Hex } from './hex';
 import { newPlayer } from './rules';
 import { visionRadius } from './world';
+import { omenFor } from './content';
 import type { ClassId, GameState, LogEntry, NPC, NpcSpec, Tone } from './types';
 
 const SAVE_KEY = 'hexbound.save.v1';
@@ -16,13 +17,26 @@ export function createGame(name: string, cls: ClassId, tone: Tone, world: { name
     summary: world.hook, recap: '', hook: '', flags: [], chapters: [],
     stats: { kills: 0, friends: 0, explored: 1, crits: 0, fumbles: 0, chapterStartGold: 15, chapterKills: 0, chapterExplored: 0 },
   };
+  startDay(s);
   reveal(s, s.pos);
   return s;
 }
 
 export function reveal(s: GameState, h: Hex, extra = 0) {
-  for (const t of spiral(h, visionRadius(h, s.seed) + extra)) s.revealed[key(t)] = 1;
+  const bonus = s.omen === 'clear-skies' ? 1 : 0;
+  for (const t of spiral(h, visionRadius(h, s.seed) + extra + bonus)) s.revealed[key(t)] = 1;
 }
+
+/** Roll today's omen and apply its dawn effects. */
+export function startDay(s: GameState) {
+  const o = omenFor(s.seed, s.day);
+  s.omen = o.id;
+  s.stamina = s.maxStamina + (o.id === 'fair-winds' ? 3 : 0);
+  if (o.id === 'lucky-stars') s.player.inspiration = true;
+  return o;
+}
+
+export const hasOmen = (s: GameState, id: string) => s.omen === id;
 
 export function save(s: GameState) {
   s.lastPlayed = Date.now();

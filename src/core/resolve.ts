@@ -2,7 +2,7 @@
 import { d, gainXp, heal, randomItem, takeItem, rollDice, itemDesc, type D20Roll } from './rules';
 import { randInt } from './rng';
 import { spiral, key } from './hex';
-import { addNpc, party, reveal } from './state';
+import { addNpc, party, reveal, hasOmen } from './state';
 import type { Choice, GameEvent, GameState, Item, NPC } from './types';
 
 export interface Effects {
@@ -36,7 +36,7 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
     let xp = 12 * tier * mult;
     switch (choice.reward) {
       case 'gold': {
-        const g = (randInt(5, 10) * tier + Math.max(0, (choice.dc ?? 10) - 10)) * mult;
+        const g = Math.round((randInt(5, 10) * tier + Math.max(0, (choice.dc ?? 10) - 10)) * mult * (hasOmen(s, 'golden-hour') ? 1.5 : 1));
         p.gold += g;
         fx.lines.push(`+${g} gold`);
         break;

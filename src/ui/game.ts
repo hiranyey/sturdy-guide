@@ -6,14 +6,14 @@ import { portraitEl } from './portrait';
 import { openSettings } from './settings-sheet';
 import { key, eq, distance, toPixel, compass, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
-import { save, reveal, log, party, remember, addNpc, chapterLog } from '../core/state';
+import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen } from '../core/state';
 import {
   CLASSES, checkBonus, armorClass, attackBonus, fmtMod, mod, xpForNext, XP_LEVELS, heal, randomItem, takeItem, itemDesc,
   equip, sellValue, profBonus, rollDice, gainXp,
 } from '../core/rules';
 import { applyCheck, questRewards, type Effects } from '../core/resolve';
 import { makeEnemy, startCombat, playRound, intentText, canUse, type Action, type Beat } from '../core/combat';
-import { FLAVOR, ENEMIES, ENEMY_INTRO, AWAY_GIFTS } from '../core/content';
+import { FLAVOR, ENEMIES, ENEMY_INTRO, AWAY_GIFTS, OMENS } from '../core/content';
 import { pick, chance, mulberry32, hashString, randInt } from '../core/rng';
 import { genEvent, genOutcome, genRegion, genQuest, genChapterEnd, type Outcome } from '../ai/director';
 import { aiEnabled } from '../ai/settings';
@@ -72,7 +72,7 @@ export class Game {
   renderHud() {
     const s = this.s, p = s.player, cls = CLASSES[p.cls];
     const prev = XP_LEVELS[p.level - 1] ?? 0;
-    const torches = Array.from({ length: s.maxStamina }, (_, i) => h('span', { class: `torch ${i < s.stamina ? 'lit' : ''}` }));
+    const torches = Array.from({ length: Math.max(s.maxStamina, s.stamina) }, (_, i) => h('span', { class: `torch ${i < s.stamina ? 'lit' : ''}` }));
     let questChip: HTMLElement | null = null;
     if (s.quest) {
       const a = toPixel(s.pos, 1), b = toPixel(s.quest.target, 1);
@@ -103,10 +103,15 @@ export class Game {
       ),
       h('div', { class: 'hud-row row2' },
         h('div', { class: 'torches', title: 'Torches: each step burns one. Camp to end the day.' }, ...torches),
-        h('div', { class: 'day' }, `Day ${s.day}`),
+        h('button', { class: 'day', onclick: () => { const o = this.omen(); if (o) toast(`${o.icon} ${o.name}: ${o.desc}`, 'gold', 3500); } },
+          this.omen() ? h('span', { class: 'omen' }, this.omen()!.icon) : null, `Day ${s.day}`),
       ),
       ...(questChip ? [questChip] : []),
     );
+  }
+
+  omen() {
+    return OMENS.find((o) => o.id === this.s.omen);
   }
 
   setTicker(text: string) {
@@ -126,6 +131,8 @@ export class Game {
     if (isNew) {
       await this.intro();
       await this.ensureQuest(true);
+      const o = this.omen();
+      if (o) toast(`${o.icon} Today's omen: ${o.name} — ${o.desc}`, 'info', 4200);
     } else {
       await this.recap();
       if (!this.s.quest) await this.ensureQuest(true);
@@ -172,6 +179,7 @@ export class Game {
       s.hook ? h('p', { class: 'hook' }, s.hook) : null,
       gift ? h('div', { class: 'gift' }, '🎁 ', gift) : null,
       s.quest ? h('div', { class: 'today' }, h('small', null, 'Your quest'), h('b', null, s.quest.title), h('span', null, s.quest.description)) : null,
+      this.omen() ? h('div', { class: 'omen-card' }, h('b', null, `${this.omen()!.icon} Today's omen: ${this.omen()!.name}`), h('span', null, this.omen()!.desc)) : null,
       h('div', { class: 'today small' }, `Day ${s.day} · ${s.stamina} torches remain`),
     ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => !!x));
     await new Promise<void>((res) => m.card.append(h('button', { class: 'btn btn-primary', onclick: () => { m.close(); res(); } }, 'Continue the tale')));
@@ -213,6 +221,15 @@ export class Game {
     if (this.busy) return;
     const s = this.s;
     if (eq(target, s.pos)) {
+      if (s.quest && eq(s.pos, s.quest.target)) {
+        this.busy = true;
+        try {
+          await this.runEvent({ hex: s.pos, biome: biomeAt(s.pos, s.seed), poi: 'quest', tier: Math.max(tierAt(s.pos), 1 + Math.floor(s.questsDone / 2)), regionName: this.regionName(s.pos) });
+        } finally {
+          this.busy = false;
+        }
+        return;
+      }
       const poi = poiAt(s.pos, s.seed);
       if (poi === 'village') this.villageServices();
       else this.setTicker(this.describeTile(s.pos));
@@ -306,7 +323,7 @@ export class Game {
     }
     const danger = BIOME_INFO[biome].danger;
     const roll = Math.random();
-    const enc = 0.1 * danger * (first ? 1 : 0.4);
+    const enc = 0.1 * danger * (first ? 1 : 0.4) * (hasOmen(s, 'blood-moon') ? 1.6 : hasOmen(s, 'still-air') ? 0.45 : 1);
     const wild = enc + 0.11 * (first ? 1 : 0.3);
     const find = wild + 0.07;
     if (roll < enc) {
@@ -472,7 +489,7 @@ export class Game {
       }
       p.gold -= cost;
       const healed = heal(p, inn ? p.maxHp : Math.ceil(p.maxHp / 2));
-      const torches = inn ? Math.min(3, s.maxStamina - s.stamina) : 0;
+      const torches = inn ? Math.max(0, Math.min(3, s.maxStamina - s.stamina)) : 0;
       s.stamina += torches;
       sfx.heal();
       log(s, `rested at ${ev.title}`, 'event');
@@ -489,6 +506,8 @@ export class Game {
       if (result === 'win' || result === 'friend') {
         markDone();
         if (isQuest) await this.completeQuest(ctx);
+      } else if (isQuest && result === 'flee') {
+        this.setTicker('You retreat for now. Tap your own tile to face the guardian again.');
       }
       return;
     }
@@ -530,6 +549,8 @@ export class Game {
     if (isQuest && roll.success) {
       await sheet.done;
       await this.completeQuest(ctx, true);
+    } else if (isQuest) {
+      this.setTicker('The goal is still within reach. Regroup, then tap your own tile to try again.');
     }
   }
 
@@ -684,9 +705,11 @@ export class Game {
           s.stats.kills++;
           s.stats.chapterKills++;
           sprite.classList.add('defeated');
-          p.gold += enemy.gold;
-          summary.push(`+${enemy.xp} XP`, `+${enemy.gold} gold`);
-          levels = gainXp(s.player, enemy.xp);
+          const xp = Math.round(enemy.xp * (hasOmen(s, 'blood-moon') ? 1.5 : 1));
+          const gold = Math.round(enemy.gold * (hasOmen(s, 'golden-hour') ? 1.5 : 1));
+          p.gold += gold;
+          summary.push(`+${xp} XP`, `+${gold} gold`);
+          levels = gainXp(s.player, xp);
           if (chance(boss ? 1 : 0.3)) {
             const it = randomItem(p, tier);
             const eqd = takeItem(p, it);
@@ -828,7 +851,7 @@ export class Game {
           if (s.player.gold < cost) return toast(`A bed costs ${cost} gold.`, 'bad');
           s.player.gold -= cost;
           heal(s.player, s.player.maxHp);
-          const t = Math.min(3, s.maxStamina - s.stamina);
+          const t = Math.max(0, Math.min(3, s.maxStamina - s.stamina));
           s.stamina += t;
           sfx.heal();
           toast(`Rested at the inn. Full HP${t ? `, +${t} 🔥` : ''}.`, 'good');
@@ -846,7 +869,9 @@ export class Game {
       const it = randomItem(p, tier, r);
       return { ...it, price: 18 + tier * 14 + it.plus * 8 };
     });
-    const potionPrice = 10 + tier * 3;
+    const disc = hasOmen(s, 'market-day') ? 0.7 : 1;
+    stock.forEach((it) => (it.price = Math.round(it.price * disc)));
+    const potionPrice = Math.round((10 + tier * 3) * disc);
     const sheet = new Sheet('event', { dismissable: true });
     const render = () => {
       sheet.set(h('div', { class: 'parchment' },
@@ -935,8 +960,8 @@ export class Game {
     save(s);
     await sheet.done;
     s.day++;
-    s.stamina = s.maxStamina;
     s.player.hp = s.player.maxHp;
+    const omen = startDay(s);
     s.stats.chapterStartGold = s.player.gold;
     s.stats.chapterKills = 0;
     s.stats.chapterExplored = 0;
@@ -945,7 +970,8 @@ export class Game {
     this.busy = false;
     this.persist();
     sfx.level();
-    toast(`☀️ Day ${s.day} dawns. 12 fresh torches.`, 'gold', 3200);
+    toast(`☀️ Day ${s.day} dawns — ${s.stamina} fresh torches.`, 'gold', 3000);
+    setTimeout(() => toast(`${omen.icon} Omen: ${omen.name} — ${omen.desc}`, 'info', 4200), 600);
   }
 
   // ================= Sheets: bag / party / journal =================

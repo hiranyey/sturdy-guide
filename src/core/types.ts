@@ -112,6 +112,7 @@ export interface GameState {
   hook: string;
   flags: string[];
   chapters: Chapter[];
+  omen?: string;
   stats: { kills: number; friends: number; explored: number; crits: number; fumbles: number; chapterStartGold: number; chapterKills: number; chapterExplored: number };
 }
 

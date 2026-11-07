@@ -70,4 +70,8 @@ async function boot() {
   }
 }
 
+if (import.meta.env.DEV) {
+  (window as any).__hb = { map, get game() { return game; }, get state() { return current; } };
+}
+
 boot();

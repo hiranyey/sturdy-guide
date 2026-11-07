@@ -375,3 +375,18 @@ export const AWAY_GIFTS = [
 ];
 
 export const ENEMY_TAUNTS = ['snarls', 'circles you warily', 'bares its teeth', 'steadies itself', 'lets out a terrible cry'];
+
+// --- Daily omens: a small twist on each day so every session feels different ---
+export interface Omen { id: string; icon: string; name: string; desc: string }
+export const OMENS: Omen[] = [
+  { id: 'fair-winds', icon: '🌬️', name: 'Fair Winds', desc: '+3 torches today.' },
+  { id: 'blood-moon', icon: '🌕', name: 'Blood Moon', desc: 'Monsters roam more often, but foes give +50% XP.' },
+  { id: 'lucky-stars', icon: '🌠', name: 'Lucky Stars', desc: 'You wake with Inspiration.' },
+  { id: 'market-day', icon: '🛒', name: 'Market Day', desc: 'Prices are 30% lower everywhere.' },
+  { id: 'golden-hour', icon: '🌅', name: 'Golden Hour', desc: 'Gold rewards are increased by 50%.' },
+  { id: 'still-air', icon: '🍃', name: 'Still Air', desc: 'The wilds are quiet: fewer ambushes.' },
+  { id: 'clear-skies', icon: '☀️', name: 'Clear Skies', desc: 'You see one hex further today.' },
+];
+export function omenFor(seed: number, day: number): Omen {
+  return OMENS[Math.abs((seed ^ Math.imul(day, 2654435761)) >>> 0) % OMENS.length];
+}
