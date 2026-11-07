@@ -390,3 +390,25 @@ export const OMENS: Omen[] = [
 export function omenFor(seed: number, day: number): Omen {
   return OMENS[Math.abs((seed ^ Math.imul(day, 2654435761)) >>> 0) % OMENS.length];
 }
+
+export const STYLE_FLAVOR: Record<string, string[]> = {
+  'grass:farm': ['Neat rows of crops sway in the breeze.', 'A farm dog barks at you from across the field.', 'The smell of hay and woodsmoke drifts over the furrows.'],
+  'grass:steppe': ['Dry grass crackles underfoot.', 'A hawk circles over the endless, thirsty plain.'],
+  'grass:bloom': ['Bees drone lazily over a sea of wildflowers.', 'Petals stick to your boots.'],
+  'forest:autumn': ['Red and gold leaves drift down around you.', 'Leaves crunch like old parchment beneath your feet.'],
+  'forest:birch': ['Pale birch trunks stand like silent sentinels.', 'Sunlight flickers through the trembling birch leaves.'],
+  'forest:jungle': ['Vines brush your face. Something hoots in the canopy.', 'The air is hot, wet and loud with insects.'],
+  'forest:pine': ['The scent of pine resin is sharp and clean.', 'Needles blanket the ground in a soft, quiet carpet.'],
+  'hills:heather': ['Purple heather hums with bees.', 'The wind carries the sweet smell of heather.'],
+  'hills:rocky': ['Loose scree shifts beneath you.', 'Boulders lie scattered as if thrown by giants.'],
+  'mountain:volcanic': ['The ground is warm. Sulphur stings your nose.', 'Ash drifts down like grey snow.', 'A distant rumble shakes pebbles loose.'],
+  'mountain:red': ['Rust-red cliffs glow in the light.', 'Red dust coats your boots.'],
+  'snow:ice': ['The ice groans and pops beneath you.', 'You can see your reflection in the glacier.'],
+  'snow:tundra': ['Lichen and stubborn shrubs cling to the frozen ground.', 'A herd of distant shapes moves across the tundra.'],
+  'desert:mesa': ['Towering red mesas cast long shadows.', 'Wind has carved the rock into strange arches.'],
+  'desert:saltflat': ['The salt flat glares white and blinding.', 'Your footsteps crunch on cracked salt.'],
+  'swamp:mangrove': ['Mangrove roots arch out of the brackish water.', 'Crabs scuttle among the tangled roots.'],
+  'swamp:dead': ['Dead trees claw at a grey sky.', 'Nothing sings here. Nothing at all.'],
+  'sand:pebble': ['Pebbles clack and roll with each wave.', 'You find a smooth stone with a hole in it.'],
+};
+export const RIVER_FLAVOR = ['You wade across a cold, clear stream.', 'A river chatters over smooth stones.', 'You hop across the stream on mossy rocks.', 'Fish flash silver in the current.'];

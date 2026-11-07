@@ -13,7 +13,8 @@ import {
 } from '../core/rules';
 import { applyCheck, questRewards, type Effects } from '../core/resolve';
 import { makeEnemy, startCombat, playRound, intentText, canUse, type Action, type Beat } from '../core/combat';
-import { FLAVOR, ENEMIES, ENEMY_INTRO, AWAY_GIFTS, OMENS } from '../core/content';
+import { FLAVOR, ENEMIES, ENEMY_INTRO, AWAY_GIFTS, OMENS, STYLE_FLAVOR, RIVER_FLAVOR } from '../core/content';
+import { landmarkAt, LANDMARKS, terrainName, riverAt, styleAt, type LandmarkKind } from '../core/terrain';
 import { pick, chance, mulberry32, hashString, randInt } from '../core/rng';
 import { genEvent, genOutcome, genRegion, genQuest, genChapterEnd, type Outcome } from '../ai/director';
 import { aiEnabled } from '../ai/settings';
@@ -284,9 +285,52 @@ export class Game {
   }
 
   private describeTile(hx: Hex) {
-    const b = biomeAt(hx, this.s.seed);
-    const region = this.s.regions[regionKey(hx)]?.name;
-    return `${BIOME_INFO[b].name}${region ? ' · ' + region : ''} — danger ${'☠'.repeat(tierAt(hx))}`;
+    const s = this.s;
+    const region = s.regions[regionKey(hx)]?.name;
+    const lm = landmarkAt(hx, s.seed);
+    const extras = [lm ? `${LANDMARKS[lm].icon} ${LANDMARKS[lm].name}` : '', riverAt(hx, s.seed) ? '🌊 stream' : ''].filter(Boolean).join(' · ');
+    return `${terrainName(hx, s.seed)}${extras ? ' · ' + extras : ''}${region && region !== 'the wilds' ? ' — ' + region : ''} · ${'☠'.repeat(tierAt(hx))}`;
+  }
+
+  private flavor(hx: Hex) {
+    const s = this.s;
+    if (riverAt(hx, s.seed) && chance(0.6)) return pick(RIVER_FLAVOR);
+    const b = biomeAt(hx, s.seed);
+    const st = STYLE_FLAVOR[`${b}:${styleAt(hx, s.seed)}`];
+    return st && chance(0.7) ? pick(st) : pick(FLAVOR[b]);
+  }
+
+  /** First visit to a midhex landmark: lore, plus a small perk. */
+  private async discoverLandmark(kind: LandmarkKind, tier: number) {
+    const s = this.s, p = s.player;
+    const def = LANDMARKS[kind];
+    const lore = def.lore[(s.pos.q * 7 + s.pos.r * 13 + 1000) % def.lore.length];
+    let perk = '';
+    let levels = 0;
+    if (def.effect && Math.random() < (def.chance ?? 1)) {
+      switch (def.effect) {
+        case 'heal': { const h2 = heal(p, rollDice(1, 6)[0] + 2 + tier); perk = h2 ? `+${h2} HP` : ''; if (h2) sfx.heal(); break; }
+        case 'reveal': {
+          reveal(s, s.pos, 2);
+          perk = 'Map revealed';
+          if (kind === 'signpost' && s.quest) {
+            const a = toPixel(s.pos, 1), b = toPixel(s.quest.target, 1);
+            perk = `Points ${compass(b.x - a.x, b.y - a.y)} toward ${s.quest.place}`;
+          }
+          break;
+        }
+        case 'insp': if (!p.inspiration) { p.inspiration = true; perk = '✨ Inspiration'; } break;
+        case 'gold': { const g = rollDice(1, 6)[0] * tier + 3; p.gold += g; perk = `+${g} gold`; sfx.coin(); break; }
+        case 'potion': if (p.potions < 8) { p.potions++; perk = '+1 potion'; sfx.heal(); } break;
+        case 'xp': { const xp = 15 * tier; levels = gainXp(p, xp); perk = `+${xp} XP`; break; }
+        case 'torch': s.stamina++; perk = '+1 🔥'; break;
+      }
+    }
+    log(s, `discovered ${def.name.startsWith('Old') || def.name.startsWith('The') ? 'the' : 'a'} ${def.name.replace(/^The /, '')}${perk ? ` (${perk})` : ''}`, 'event');
+    this.setTicker(lore);
+    toast(`${def.icon} ${def.name}${perk ? ' — ' + perk : ''}`, perk ? 'gold' : 'info', 3200);
+    this.persist();
+    if (levels) await this.levelUp(levels);
   }
 
   private async enterTile(hx: Hex): Promise<boolean> {
@@ -316,9 +360,20 @@ export class Game {
       this.setTicker('Back in the village. Tap your tile to trade or rest.');
       return true;
     }
+    const lmk = landmarkAt(hx, s.seed);
+    if (lmk && !mem.lm) {
+      mem.lm = 1;
+      this.calm = 1;
+      if (LANDMARKS[lmk].event) {
+        await this.runEvent({ hex: hx, biome, poi: 'wild', tier, regionName: this.regionName(hx), landmark: lmk });
+        return true;
+      }
+      await this.discoverLandmark(lmk, tier);
+      return false;
+    }
     if (this.calm > 0) {
       this.calm--;
-      this.setTicker(pick(FLAVOR[biome]));
+      this.setTicker(this.flavor(hx));
       return false;
     }
     const danger = BIOME_INFO[biome].danger;
@@ -357,7 +412,7 @@ export class Game {
       this.calm = 1;
       return false;
     }
-    this.setTicker(pick(FLAVOR[biome]));
+    this.setTicker(this.flavor(hx));
     return false;
   }
 
@@ -398,8 +453,10 @@ export class Game {
   // ================= Events =================
   private async runEvent(ctx: EventContext) {
     const s = this.s;
+    ctx.terrain ??= terrainName(ctx.hex, s.seed);
     const sheet = new Sheet('event');
-    const kindLabel = `${POI_LABEL[ctx.poi] ?? 'Encounter'} · ${ctx.regionName}`;
+    const lmDef = ctx.landmark ? LANDMARKS[ctx.landmark as LandmarkKind] : null;
+    const kindLabel = `${lmDef ? `${lmDef.icon} ${lmDef.name}` : POI_LABEL[ctx.poi] ?? 'Encounter'} · ${ctx.regionName}`;
     sheet.set(h('div', { class: 'parchment loading-card' },
       h('div', { class: 'ev-kind' }, kindLabel),
       h('div', { class: 'spin-die', html: d20Svg('?') }),

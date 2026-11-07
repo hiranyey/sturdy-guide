@@ -4,255 +4,9 @@ import { mulberry32, hash2 } from '../core/rng';
 import { CLASSES } from '../core/rules';
 import { party } from '../core/state';
 import type { Biome, GameState, PoiKind } from '../core/types';
+import { styleAt, riverMask, riverAt, landmarkAt } from '../core/terrain';
+import { hexPath, palette, decorate, drawRiver, riverSegments, drawLandmark, waterGlint, type Ctx } from './terrain-art';
 
-type Ctx = CanvasRenderingContext2D;
-
-const PALETTE: Record<Biome, [string, string, string]> = {
-  // [light, dark, extrusion]
-  deep: ['#28508f', '#173465', '#0d1f40'],
-  water: ['#3f8cc9', '#2a69a3', '#1b4672'],
-  sand: ['#f0dba0', '#d8b874', '#a9884b'],
-  grass: ['#93c55a', '#68a03c', '#476e2a'],
-  forest: ['#5f9a45', '#3e7530', '#2a4f20'],
-  swamp: ['#7b9160', '#556b45', '#3a4a30'],
-  hills: ['#b9c06e', '#939a52', '#686e39'],
-  mountain: ['#9a9aa8', '#74747f', '#4e4e58'],
-  snow: ['#f3f7fc', '#cdd9ea', '#94a6c0'],
-  desert: ['#f2c46d', '#d99f4c', '#a8733a'],
-};
-
-function hexPath(ctx: Ctx, cx: number, cy: number, s: number) {
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 180) * (60 * i - 30);
-    const x = cx + s * Math.cos(a), y = cy + s * Math.sin(a);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-}
-
-// ---------- Decorations ----------
-function tree(ctx: Ctx, x: number, y: number, s: number, kind: number, snow = false) {
-  ctx.fillStyle = '#5a3b22';
-  ctx.fillRect(x - s * 0.04, y - s * 0.08, s * 0.08, s * 0.12);
-  if (kind === 0) {
-    const tiers = [[0.26, 0.28], [0.21, 0.42], [0.15, 0.55]];
-    for (const [w, top] of tiers) {
-      ctx.beginPath();
-      ctx.moveTo(x - s * w, y - s * (top - 0.2));
-      ctx.lineTo(x, y - s * top - s * 0.06);
-      ctx.lineTo(x + s * w, y - s * (top - 0.2));
-      ctx.closePath();
-      ctx.fillStyle = '#2d6a35';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(x - s * w, y - s * (top - 0.2));
-      ctx.lineTo(x, y - s * top - s * 0.06);
-      ctx.lineTo(x, y - s * (top - 0.2));
-      ctx.closePath();
-      ctx.fillStyle = snow ? '#e8f0f8' : '#3f8a46';
-      ctx.fill();
-    }
-  } else {
-    ctx.fillStyle = '#2f6b2f';
-    ctx.beginPath();
-    ctx.arc(x, y - s * 0.24, s * 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#4c9a43';
-    ctx.beginPath();
-    ctx.arc(x - s * 0.06, y - s * 0.29, s * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function peak(ctx: Ctx, x: number, base: number, w: number, hgt: number, snowCap: boolean) {
-  ctx.beginPath();
-  ctx.moveTo(x - w, base);
-  ctx.lineTo(x, base - hgt);
-  ctx.lineTo(x + w, base);
-  ctx.closePath();
-  ctx.fillStyle = '#6a6a78';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(x - w, base);
-  ctx.lineTo(x, base - hgt);
-  ctx.lineTo(x + w * 0.15, base);
-  ctx.closePath();
-  ctx.fillStyle = '#a9a9b8';
-  ctx.fill();
-  if (snowCap) {
-    ctx.beginPath();
-    ctx.moveTo(x - w * 0.36, base - hgt * 0.64);
-    ctx.lineTo(x, base - hgt);
-    ctx.lineTo(x + w * 0.36, base - hgt * 0.64);
-    ctx.lineTo(x + w * 0.12, base - hgt * 0.7);
-    ctx.lineTo(x - w * 0.05, base - hgt * 0.6);
-    ctx.lineTo(x - w * 0.2, base - hgt * 0.7);
-    ctx.closePath();
-    ctx.fillStyle = '#f4f7fb';
-    ctx.fill();
-  }
-}
-
-function decorate(ctx: Ctx, biome: Biome, cx: number, cy: number, s: number, r: () => number) {
-  const inHex = () => {
-    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * s * 0.55;
-    return [cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.85];
-  };
-  ctx.lineCap = 'round';
-  switch (biome) {
-    case 'grass': {
-      ctx.strokeStyle = '#4f8a2d';
-      ctx.lineWidth = Math.max(1, s * 0.04);
-      for (let i = 0; i < 7; i++) {
-        const [x, y] = inHex();
-        ctx.beginPath();
-        ctx.moveTo(x - s * 0.05, y - s * 0.07);
-        ctx.lineTo(x, y);
-        ctx.lineTo(x + s * 0.05, y - s * 0.08);
-        ctx.stroke();
-      }
-      if (r() < 0.45) {
-        const cols = ['#ffe36e', '#ff8fa3', '#ffffff', '#c39bff'];
-        const c = cols[Math.floor(r() * cols.length)];
-        for (let i = 0; i < 4; i++) {
-          const [x, y] = inHex();
-          ctx.fillStyle = c;
-          ctx.beginPath();
-          ctx.arc(x, y, s * 0.035, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      break;
-    }
-    case 'forest': {
-      const pts = Array.from({ length: 4 + Math.floor(r() * 2) }, inHex).sort((a, b) => a[1] - b[1]);
-      const kind = r() < 0.6 ? 0 : 1;
-      for (const [x, y] of pts) tree(ctx, x, y + s * 0.15, s * (0.85 + r() * 0.3), r() < 0.8 ? kind : 1 - kind);
-      break;
-    }
-    case 'swamp': {
-      for (let i = 0; i < 2; i++) {
-        const [x, y] = inHex();
-        ctx.fillStyle = '#3c5a58';
-        ctx.beginPath();
-        ctx.ellipse(x, y, s * 0.2, s * 0.09, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#5f8a7a';
-        ctx.beginPath();
-        ctx.ellipse(x - s * 0.05, y - s * 0.02, s * 0.08, s * 0.03, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.strokeStyle = '#a3a865';
-      ctx.lineWidth = Math.max(1, s * 0.03);
-      for (let i = 0; i < 6; i++) {
-        const [x, y] = inHex();
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + (r() - 0.5) * s * 0.06, y - s * 0.2);
-        ctx.stroke();
-        ctx.fillStyle = '#6b4a2a';
-        ctx.fillRect(x - s * 0.015, y - s * 0.22, s * 0.03, s * 0.07);
-      }
-      break;
-    }
-    case 'hills': {
-      const pts = Array.from({ length: 3 }, inHex).sort((a, b) => a[1] - b[1]);
-      for (const [x, y] of pts) {
-        const w = s * (0.22 + r() * 0.1);
-        ctx.fillStyle = '#7f8a45';
-        ctx.beginPath();
-        ctx.ellipse(x, y, w, w * 0.65, 0, Math.PI, 0);
-        ctx.fill();
-        ctx.fillStyle = '#c4cc80';
-        ctx.beginPath();
-        ctx.ellipse(x - w * 0.25, y - w * 0.1, w * 0.55, w * 0.45, 0, Math.PI, 0);
-        ctx.fill();
-      }
-      break;
-    }
-    case 'mountain': {
-      const n = r() < 0.5 ? 1 : 2;
-      if (n === 1) peak(ctx, cx + (r() - 0.5) * s * 0.2, cy + s * 0.45, s * 0.55, s * (1.05 + r() * 0.25), true);
-      else {
-        peak(ctx, cx - s * 0.25, cy + s * 0.35, s * 0.4, s * 0.8, r() < 0.7);
-        peak(ctx, cx + s * 0.22, cy + s * 0.5, s * 0.45, s * 1.0, true);
-      }
-      break;
-    }
-    case 'snow': {
-      if (r() < 0.5) {
-        const pts = Array.from({ length: 2 + Math.floor(r() * 2) }, inHex).sort((a, b) => a[1] - b[1]);
-        for (const [x, y] of pts) tree(ctx, x, y + s * 0.15, s * 0.85, 0, true);
-      } else {
-        for (let i = 0; i < 3; i++) {
-          const [x, y] = inHex();
-          ctx.fillStyle = '#b7c7de';
-          ctx.beginPath();
-          ctx.ellipse(x, y, s * 0.2, s * 0.08, 0, Math.PI, 0);
-          ctx.fill();
-        }
-      }
-      ctx.fillStyle = '#ffffff';
-      for (let i = 0; i < 6; i++) {
-        const [x, y] = inHex();
-        ctx.fillRect(x, y, s * 0.03, s * 0.03);
-      }
-      break;
-    }
-    case 'desert': {
-      ctx.strokeStyle = '#c4843a';
-      ctx.lineWidth = Math.max(1, s * 0.045);
-      for (let i = 0; i < 3; i++) {
-        const [x, y] = inHex();
-        ctx.beginPath();
-        ctx.moveTo(x - s * 0.25, y);
-        ctx.quadraticCurveTo(x, y - s * 0.16, x + s * 0.25, y);
-        ctx.stroke();
-      }
-      if (r() < 0.35) {
-        const [x, y] = inHex();
-        ctx.fillStyle = '#4c8a3c';
-        ctx.fillRect(x - s * 0.04, y - s * 0.3, s * 0.08, s * 0.3);
-        ctx.fillRect(x - s * 0.15, y - s * 0.2, s * 0.06, s * 0.12);
-        ctx.fillRect(x - s * 0.15, y - s * 0.12, s * 0.12, s * 0.05);
-        ctx.fillRect(x + s * 0.09, y - s * 0.24, s * 0.06, s * 0.12);
-        ctx.fillRect(x + s * 0.03, y - s * 0.16, s * 0.12, s * 0.05);
-      }
-      break;
-    }
-    case 'sand': {
-      ctx.fillStyle = '#c9a868';
-      for (let i = 0; i < 8; i++) {
-        const [x, y] = inHex();
-        ctx.beginPath();
-        ctx.arc(x, y, s * 0.025, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (r() < 0.4) {
-        const [x, y] = inHex();
-        ctx.fillStyle = '#ffd1dc';
-        ctx.beginPath();
-        ctx.arc(x, y, s * 0.06, Math.PI, 0);
-        ctx.fill();
-      }
-      break;
-    }
-    case 'water':
-    case 'deep': {
-      ctx.strokeStyle = biome === 'water' ? 'rgba(190,230,255,0.55)' : 'rgba(120,170,230,0.35)';
-      ctx.lineWidth = Math.max(1, s * 0.04);
-      for (let i = 0; i < 3; i++) {
-        const [x, y] = inHex();
-        ctx.beginPath();
-        ctx.arc(x - s * 0.08, y, s * 0.08, Math.PI * 1.1, Math.PI * 1.9);
-        ctx.arc(x + s * 0.08, y, s * 0.08, Math.PI * 1.1, Math.PI * 1.9);
-        ctx.stroke();
-      }
-      break;
-    }
-  }
-}
 
 // ---------- POI icons ----------
 function drawPoi(ctx: Ctx, kind: PoiKind | 'quest', x: number, y: number, s: number, t: number) {
@@ -688,9 +442,9 @@ export class MapView {
     return cv;
   }
 
-  private tileSprite(biome: Biome, variant: number) {
-    return this.sprite(`t:${biome}:${variant}`, (ctx, cx, cy, s) => {
-      const [light, dark, ext] = PALETTE[biome];
+  private tileSprite(biome: Biome, style: string, variant: number, rmask: number, lm: boolean) {
+    return this.sprite(`t:${biome}:${style}:${variant}:${rmask}:${lm ? 1 : 0}`, (ctx, cx, cy, s) => {
+      const [light, dark, ext] = palette(biome, style);
       const depth = biome === 'deep' || biome === 'water' ? s * 0.08 : s * 0.2;
       hexPath(ctx, cx, cy + depth, s - 0.5);
       ctx.fillStyle = ext;
@@ -704,14 +458,12 @@ export class MapView {
       ctx.save();
       hexPath(ctx, cx, cy, s - 0.5);
       ctx.clip();
-      // subtle texture speckle
-      const r = mulberry32(hash2(variant, biome.length, 77));
+      const r = mulberry32(hash2(variant, biome.length + style.length * 7, 77));
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
       for (let i = 0; i < 14; i++) ctx.fillRect(cx + (r() - 0.5) * s * 1.6, cy + (r() - 0.5) * s * 1.6, s * 0.05, s * 0.05);
       ctx.fillStyle = 'rgba(0,0,0,0.05)';
       for (let i = 0; i < 14; i++) ctx.fillRect(cx + (r() - 0.5) * s * 1.6, cy + (r() - 0.5) * s * 1.6, s * 0.05, s * 0.05);
       ctx.restore();
-      // rim light
       hexPath(ctx, cx, cy, s - 1.5);
       ctx.strokeStyle = 'rgba(255,255,255,0.18)';
       ctx.lineWidth = Math.max(1, s * 0.03);
@@ -720,7 +472,20 @@ export class MapView {
       ctx.strokeStyle = 'rgba(0,0,0,0.22)';
       ctx.lineWidth = 1;
       ctx.stroke();
-      decorate(ctx, biome, cx, cy, s, mulberry32(hash2(variant, biome.charCodeAt(0), 1234)));
+      const dr = mulberry32(hash2(variant, biome.charCodeAt(0) + style.charCodeAt(0) * 31, 1234 + rmask));
+      const isRiver = (rmask & 64) !== 0;
+      const segs = isRiver ? riverSegments(rmask & 63, cx, cy, s) : [];
+      if (isRiver) drawRiver(ctx, rmask & 63, cx, cy, s, dr);
+      const avoid = (x: number, y: number) => {
+        if (lm && Math.hypot(x - cx, y - cy) < s * 0.36) return true;
+        for (const [x0, y0, x1, y1] of segs) {
+          const dx = x1 - x0, dy = y1 - y0;
+          const k = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy)));
+          if (Math.hypot(x - (x0 + dx * k), y - (y0 + dy * k)) < s * 0.2) return true;
+        }
+        return false;
+      };
+      decorate(ctx, biome, style, cx, cy, s, dr, avoid);
     });
   }
 
@@ -809,10 +574,18 @@ export class MapView {
         const k = key(hx);
         const p = toPixel(hx, size);
         const x = p.x + ox, y = p.y + oy;
-        const variant = hash2(q, r, s.seed) & 3;
+        const hv = hash2(q, r, s.seed);
+        const variant = hv % 6;
         let img: HTMLCanvasElement;
         const revealed = s.revealed[k] === 1;
-        if (revealed) img = this.tileSprite(biomeAt(hx, s.seed), variant);
+        let biome: Biome = 'grass';
+        let lm: ReturnType<typeof landmarkAt> = null;
+        if (revealed) {
+          biome = biomeAt(hx, s.seed);
+          lm = landmarkAt(hx, s.seed);
+          const rm = riverAt(hx, s.seed) ? riverMask(hx, s.seed) | 64 : 0;
+          img = this.tileSprite(biome, styleAt(hx, s.seed), variant, rm, !!lm);
+        }
         else {
           let near = false;
           for (const n of neighbors(hx)) if (s.revealed[key(n)]) { near = true; break; }
@@ -821,6 +594,8 @@ export class MapView {
         }
         ctx.drawImage(img, x - img.width / this.dpr / 2, y - (pad + size * this.dpr + 2) / this.dpr, img.width / this.dpr, img.height / this.dpr);
         if (!revealed) continue;
+        if (biome === 'water' || biome === 'deep') waterGlint(ctx, x, y, size, t, (hv % 1000) / 160);
+        if (lm) drawLandmark(ctx, lm, x, y, size, t, hv % 7);
         if (!this.demo && distance(hx, s.pos) > vision) {
           hexPath(ctx, x, y, size - 0.5);
           ctx.fillStyle = 'rgba(10,12,30,0.32)';

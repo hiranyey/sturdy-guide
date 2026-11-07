@@ -10,6 +10,7 @@ import {
 } from '../core/content';
 import { pick } from '../core/rng';
 import { STATS } from '../core/types';
+import { LANDMARKS, type LandmarkKind } from '../core/terrain';
 import type {
   Biome, Choice, ClassId, EnemyKind, EventContext, GameEvent, GameState, NpcSpec, RegionInfo, RewardKind, Stat, Tone,
 } from '../core/types';
@@ -113,8 +114,14 @@ const VALID_KINDS = ['check', 'fight', 'trade', 'rest', 'leave'];
 const VALID_REWARDS: RewardKind[] = ['gold', 'item', 'ally', 'heal', 'lore', 'xp'];
 const VALID_ENEMY: EnemyKind[] = ['beast', 'humanoid', 'undead', 'monster', 'spirit'];
 
+/** Hand-written fallback, preferring the landmark's own scene when there is one. */
+export function baseFallback(ctx: EventContext): GameEvent {
+  const lm = ctx.landmark ? LANDMARKS[ctx.landmark as LandmarkKind] : undefined;
+  return lm?.event ? lm.event(ctx) : fallbackEvent(ctx);
+}
+
 export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
-  const fb = fallbackEvent(ctx);
+  const fb = baseFallback(ctx);
   const ev: GameEvent = {
     title: clip(raw?.title, 40, fb.title),
     text: clip(raw?.text, 520, fb.text),
@@ -157,13 +164,14 @@ export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
 }
 
 export async function genEvent(s: GameState, ctx: EventContext): Promise<GameEvent> {
-  if (!aiEnabled()) return fallbackEvent(ctx);
+  if (!aiEnabled()) return baseFallback(ctx);
   const returning = ctx.returningNpc
     ? `Feature this RETURNING character, who remembers the hero: ${JSON.stringify({ name: ctx.returningNpc.name, role: ctx.returningNpc.role, personality: ctx.returningNpc.personality, affinity: ctx.returningNpc.affinity, memories: ctx.returningNpc.memories })}. Put them in "npc" with the same name.`
     : '';
   try {
     const raw = await ask<any>(s, `Create the next encounter.
-Location: ${POI_GUIDE[ctx.poi] ?? POI_GUIDE.wild}. Terrain: ${BIOME_INFO[ctx.biome].name}. Region: ${ctx.regionName}. Danger tier ${ctx.tier}/5.
+Location: ${POI_GUIDE[ctx.poi] ?? POI_GUIDE.wild}. Terrain: ${ctx.terrain ?? BIOME_INFO[ctx.biome].name}. Region: ${ctx.regionName}. Danger tier ${ctx.tier}/5.
+${ctx.landmark ? `The scene is built around a landmark standing here: ${LANDMARKS[ctx.landmark as LandmarkKind].name} — ${LANDMARKS[ctx.landmark as LandmarkKind].lore[0]} Make the landmark central to the encounter and its choices.` : ''}
 ${returning}
 Context: ${JSON.stringify(storyContext(s))}
 Return JSON:
@@ -179,7 +187,7 @@ Rules: offer genuinely different approaches using DIFFERENT stats; make choices 
     return sanitizeEvent(raw, ctx);
   } catch (e) {
     console.warn('event fallback', e);
-    return fallbackEvent(ctx);
+    return baseFallback(ctx);
   }
 }
 

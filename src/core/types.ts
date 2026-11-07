@@ -82,6 +82,8 @@ export interface TileMem {
   done?: 1;
   /** short memory note, shown on journal/map */
   note?: string;
+  /** landmark already discovered */
+  lm?: 1;
 }
 
 export interface LogEntry { day: number; text: string; kind: 'event' | 'fight' | 'friend' | 'quest' | 'loot' | 'info' }
@@ -147,4 +149,8 @@ export interface EventContext {
   tier: number;
   regionName: string;
   returningNpc?: NPC;
+  /** sub-style terrain name, e.g. "Autumn Wood" */
+  terrain?: string;
+  /** landmark kind the scene is built around */
+  landmark?: string;
 }

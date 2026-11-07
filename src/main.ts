@@ -71,7 +71,8 @@ async function boot() {
 }
 
 if (import.meta.env.DEV) {
-  (window as any).__hb = { map, get game() { return game; }, get state() { return current; } };
+  (window as any).__hb = { map, get game() { return game; }, get state() { return current; }, get demo() { return demo; } };
+  import('./core/terrain').then((m) => ((window as any).__terrain = m));
 }
 
 boot();

@@ -27,3 +27,29 @@ describe('world', () => {
     }
   });
 });
+
+import { styleAt, riverAt, riverMask, landmarkAt } from './terrain';
+describe('terrain variety', () => {
+  it('produces many styles, connected rivers and landmarks', () => {
+    const styles = new Set<string>();
+    let rivers = 0, connected = 0, lms = 0;
+    const kinds = new Set<string>();
+    for (const seed of [1, 42, 999, 2024]) {
+      for (const h of spiral({ q: 0, r: 0 }, 30)) {
+        styles.add(`${biomeAt(h, seed)}:${styleAt(h, seed)}`);
+        if (riverAt(h, seed)) {
+          rivers++;
+          if (riverMask(h, seed)) connected++;
+        }
+        const lm = landmarkAt(h, seed);
+        if (lm) { lms++; kinds.add(lm); }
+      }
+    }
+    console.log({ styles: styles.size, rivers, connected, lms, kinds: kinds.size });
+    expect(styles.size).toBeGreaterThan(20);
+    expect(rivers).toBeGreaterThan(50);
+    expect(connected / rivers).toBeGreaterThan(0.8);
+    expect(lms).toBeGreaterThan(200);
+    expect(kinds.size).toBeGreaterThan(20);
+  });
+});

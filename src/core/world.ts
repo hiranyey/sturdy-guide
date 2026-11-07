@@ -33,11 +33,20 @@ export function biomeAt(h: Hex, seed: number): Biome {
   return b;
 }
 
-function computeBiome(h: Hex, seed: number): Biome {
+/** Raw climate values (0..1) used for biomes and their sub-styles. */
+export function climate(h: Hex, seed: number) {
   const p = toPixel(h, 1);
-  let elev = fbm(p.x * 0.085, p.y * 0.085, seed, 5);
-  const moist = fbm(p.x * 0.06 + 311, p.y * 0.06 - 97, seed ^ 0x5bd1e995, 4);
-  const temp = fbm(p.x * 0.03 - 51, p.y * 0.03 + 77, seed ^ 0x1b873593, 3);
+  return {
+    elev: fbm(p.x * 0.085, p.y * 0.085, seed, 5),
+    moist: fbm(p.x * 0.06 + 311, p.y * 0.06 - 97, seed ^ 0x5bd1e995, 4),
+    temp: fbm(p.x * 0.03 - 51, p.y * 0.03 + 77, seed ^ 0x1b873593, 3),
+  };
+}
+
+function computeBiome(h: Hex, seed: number): Biome {
+  const c = climate(h, seed);
+  let elev = c.elev;
+  const moist = c.moist, temp = c.temp;
   // Guarantee a friendly landmass around the start.
   const d = distance(h, { q: 0, r: 0 });
   elev += 0.22 * Math.exp(-(d * d) / 40);
