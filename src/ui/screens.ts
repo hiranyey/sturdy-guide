@@ -6,7 +6,7 @@ import { CLASSES, fmtMod, mod } from '../core/rules';
 import { TREES } from '../core/talents';
 import { heroPortraitSvg, classEmblemSvg } from './art/heroes';
 import { load } from '../core/state';
-import { npcName } from '../core/content';
+import { heroName, MAX_NAME } from '../core/names';
 import { aiEnabled } from '../ai/settings';
 import { STATS } from '../core/types';
 import type { ClassId, Tone } from '../core/types';
@@ -56,12 +56,23 @@ export function showCreate(onBegin: (name: string, cls: ClassId, tone: Tone) => 
   root.innerHTML = '';
   let cls: ClassId = 'warrior';
   let tone: Tone = 'heroic';
-  const nameInput = h('input', { class: 'name-input', value: npcName().split(' ')[0], maxlength: 18, placeholder: 'Your name', autocomplete: 'off' }) as HTMLInputElement;
+  const nameInput = h('input', { class: 'name-input', value: heroName(), maxlength: MAX_NAME, placeholder: 'Your name', autocomplete: 'off', autocapitalize: 'words', spellcheck: false }) as HTMLInputElement;
   // The preview portrait follows the name: the same name always gives the same face.
-  nameInput.addEventListener('input', () => {
+  const syncPortrait = () => {
+    nameInput.classList.toggle('long', nameInput.value.length > 15);
     const el = detail.querySelector('.cd-portrait');
     if (el) el.innerHTML = heroPortraitSvg(nameInput.value.trim() || 'Hero', cls, 72);
-  });
+  };
+  nameInput.addEventListener('input', syncPortrait);
+  nameInput.classList.toggle('long', nameInput.value.length > 15);
+  const dice = h('button', { type: 'button', class: 'name-dice', 'aria-label': 'Random name', title: 'Random name', html: d20Svg('?'), onclick: () => {
+    nameInput.value = heroName(nameInput.value.trim());
+    syncPortrait();
+    sfx.roll(0.35);
+    dice.classList.remove('spin');
+    void dice.offsetWidth;
+    dice.classList.add('spin');
+  } });
   const classGrid = h('div', { class: 'class-grid' });
   const detail = h('div', { class: 'class-detail' });
   const renderClasses = () => {
@@ -92,7 +103,7 @@ export function showCreate(onBegin: (name: string, cls: ClassId, tone: Tone) => 
   root.append(h('div', { class: 'create-inner' },
     h('button', { class: 'back', onclick: onBack }, '‹ Back'),
     h('h2', null, 'Who walks into the wilds?'),
-    h('label', { class: 'field' }, h('span', null, 'Name'), nameInput),
+    h('div', { class: 'field' }, h('span', null, 'Name'), h('div', { class: 'name-row' }, nameInput, dice)),
     h('label', { class: 'field' }, h('span', null, 'Class')),
     classGrid,
     detail,

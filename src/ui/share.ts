@@ -106,7 +106,7 @@ async function footer(ctx: CanvasRenderingContext2D, s: GameState) {
   ctx.textAlign = 'left';
   ctx.fillStyle = INK;
   ctx.font = `600 40px ${HEAD}`;
-  ctx.fillText(p.name, 215, y + 2);
+  ctx.fillText(p.name, 215, y + 2, W - 215 - 80); // long names squeeze rather than run off
   ctx.fillStyle = MUTED;
   ctx.font = `30px ${BODY}`;
   ctx.fillText(`Level ${p.level} ${cls.name} · Day ${s.day} · 🏆 ${achievementCount(s)}/${ACHIEVEMENTS.length}`, 215, y + 44);

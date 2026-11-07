@@ -425,6 +425,14 @@ body.shake #app, body.shake .sheet-panel { animation: shakeX 0.35s; }
 .create-inner { max-width: 480px; margin: 0 auto; padding: calc(var(--safe-t) + 18px) 18px calc(var(--safe-b) + 30px); }
 .back { color: var(--muted); padding: 6px 0; }
 .name-input { font-family: var(--head) !important; font-size: 1.3rem !important; text-align: center; }
+.name-input.long { font-size: 1rem !important; }
+.name-row { display: flex; gap: 8px; align-items: stretch; }
+.name-row .name-input { flex: 1; min-width: 0; }
+.name-dice { flex: none; width: 52px; border-radius: 10px; background: #0c0f1e; border: 1px solid var(--line); display: grid; place-items: center; padding: 6px; }
+.name-dice svg { width: 36px; height: 36px; overflow: visible; filter: drop-shadow(0 0 8px rgba(130,100,255,0.45)); }
+.name-dice:active { transform: scale(0.92); }
+.name-dice.spin svg { animation: nameDice 0.5s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes nameDice { from { transform: rotate(-200deg) scale(0.7); } }
 .class-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .class-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 14px; background: var(--panel); border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s; }
 .class-card .cc-glyph { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 22px; background: var(--cc); color: #fff8e0; border: 2px solid #fff8e0; opacity: 0.6; transition: all 0.2s; }

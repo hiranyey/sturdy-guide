@@ -110,7 +110,7 @@ export class Game {
       h('div', { class: 'hud-row' },
         h('button', { class: 'hero-chip', onclick: () => this.openBag() },
           heroPortraitEl(p.name, p.cls, 40, 'hud-portrait'),
-          h('span', { class: 'hero-txt' }, h('b', null, p.name), h('small', null, `Lv ${p.level} ${cls.name}`)),
+          h('span', { class: 'hero-txt' }, h('b', { title: p.name }, p.name.split(' ')[0]), h('small', null, `Lv ${p.level} ${cls.name}`)),
           growth ? h('span', { class: 'grow-badge', 'aria-label': 'Talent points to spend' }, '✦') : null,
         ),
         h('div', { class: 'hud-bars' },
