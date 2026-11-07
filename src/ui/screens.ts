@@ -4,6 +4,7 @@ import { openSettings } from './settings-sheet';
 import { d20Svg } from './dice';
 import { CLASSES, fmtMod, mod } from '../core/rules';
 import { TREES } from '../core/talents';
+import { heroPortraitSvg, classEmblemSvg } from './art/heroes';
 import { load } from '../core/state';
 import { npcName } from '../core/content';
 import { aiEnabled } from '../ai/settings';
@@ -56,18 +57,24 @@ export function showCreate(onBegin: (name: string, cls: ClassId, tone: Tone) => 
   let cls: ClassId = 'warrior';
   let tone: Tone = 'heroic';
   const nameInput = h('input', { class: 'name-input', value: npcName().split(' ')[0], maxlength: 18, placeholder: 'Your name', autocomplete: 'off' }) as HTMLInputElement;
+  // The preview portrait follows the name: the same name always gives the same face.
+  nameInput.addEventListener('input', () => {
+    const el = detail.querySelector('.cd-portrait');
+    if (el) el.innerHTML = heroPortraitSvg(nameInput.value.trim() || 'Hero', cls, 72);
+  });
   const classGrid = h('div', { class: 'class-grid' });
   const detail = h('div', { class: 'class-detail' });
   const renderClasses = () => {
     classGrid.innerHTML = '';
     for (const c of Object.values(CLASSES)) {
       classGrid.appendChild(h('button', { class: `class-card ${c.id === cls ? 'sel' : ''}`, style: `--cc:${c.color}`, onclick: () => { cls = c.id; sfx.tap(); renderClasses(); } },
-        h('span', { class: 'cc-glyph' }, c.glyph), h('b', null, c.name)));
+        h('span', { class: 'cc-glyph', html: classEmblemSvg(c.id, 46) }), h('b', null, c.name)));
     }
     const c = CLASSES[cls];
     detail.innerHTML = '';
     detail.append(
-      h('p', { class: 'cd-blurb' }, c.blurb),
+      h('div', { class: 'cd-head' }, h('span', { class: 'cd-portrait', html: heroPortraitSvg(nameInput.value.trim() || 'Hero', cls, 72) }),
+        h('p', { class: 'cd-blurb' }, c.blurb)),
       h('div', { class: 'mini-stats' }, ...STATS.map((st) => h('span', { class: c.prof.includes(st) ? 'prof' : '' }, h('small', null, st.toUpperCase()), h('b', null, fmtMod(mod(c.stats[st])))))),
       h('p', { class: 'cd-ability' }, h('b', null, `💥 ${c.ability.name}: `), c.ability.desc),
       h('p', { class: 'cd-ability' }, `🗡️ ${c.weapon.name} (d${c.weapon.die}) · 🛡️ ${c.armor.name}`),

@@ -674,3 +674,14 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
   .sheet-body.combat .dice-tray { min-height: 46px; }
 }
 .app-version { text-align: center; color: var(--muted); font-size: 0.78rem; letter-spacing: 0.06em; margin: 10px 0 2px; user-select: text; -webkit-user-select: text; }
+/* class picker: emblems + live portrait */
+.class-card .cc-glyph { background: none; border: 0; width: 50px; height: 50px; opacity: 0.55; filter: grayscale(0.4); }
+.class-card.sel .cc-glyph { opacity: 1; filter: none; box-shadow: none; }
+.cc-glyph svg { width: 100%; height: 100%; display: block; }
+.cd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.cd-head .cd-blurb { margin: 0; flex: 1; }
+.cd-portrait { flex: none; line-height: 0; animation: popIn 0.35s cubic-bezier(.2,1.4,.4,1); }
+@keyframes popIn { from { transform: scale(0.7); opacity: 0; } }
+.hero-chip .portrait-wrap { line-height: 0; flex: none; }
+.panel-head .portrait-wrap { line-height: 0; flex: none; }
+.portrait-wrap { line-height: 0; }

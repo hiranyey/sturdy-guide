@@ -3,7 +3,7 @@
 import { h, modal, toast } from './dom';
 import { sfx } from './audio';
 import { d20Svg } from './dice';
-import { portraitSvg } from './portrait';
+import { heroPortraitSvg } from './art/heroes';
 import { CLASSES } from '../core/rules';
 import { party } from '../core/state';
 import { ACHIEVEMENTS, achievementCount, type AchievementDef } from '../core/achievements';
@@ -100,7 +100,7 @@ async function footer(ctx: CanvasRenderingContext2D, s: GameState) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fillRect(70, y - 50, W - 140, 120);
   try {
-    const img = await loadSvg(portraitSvg(p.name, 96));
+    const img = await loadSvg(heroPortraitSvg(p.name, p.cls, 104));
     ctx.drawImage(img, 90, y - 42, 104, 104);
   } catch { /* portrait optional */ }
   ctx.textAlign = 'left';

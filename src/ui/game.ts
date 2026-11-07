@@ -9,6 +9,7 @@ import { MapView } from './map';
 import { rollCheck, DiceTray, d20Svg } from './dice';
 import { sfx } from './audio';
 import { portraitEl } from './portrait';
+import { heroPortraitEl } from './art/heroes';
 import { openSettings } from './settings-sheet';
 import { key, eq, distance, toPixel, compass, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
@@ -101,7 +102,7 @@ export class Game {
     this.hud.append(
       h('div', { class: 'hud-row' },
         h('button', { class: 'hero-chip', onclick: () => this.openBag() },
-          h('span', { class: 'hero-glyph', style: `background:${cls.color}` }, cls.glyph),
+          heroPortraitEl(p.name, p.cls, 40, 'hud-portrait'),
           h('span', { class: 'hero-txt' }, h('b', null, p.name), h('small', null, `Lv ${p.level} ${cls.name}`)),
           growth ? h('span', { class: 'grow-badge', 'aria-label': 'Talent points to spend' }, '✦') : null,
         ),
@@ -1146,7 +1147,7 @@ export class Game {
     await this.chooseStats(body);
     body.replaceChildren();
     if (grown.length) {
-      body.append(h('div', { class: 'lvl-party' }, ...grown.map((g) => h('div', { class: 'lp' }, portraitEl(g.npc.name, 30),
+      body.append(h('div', { class: 'lvl-party' }, ...grown.map((g) => h('div', { class: 'lp' }, heroPortraitEl(g.npc.name, g.npc.hero!.cls, 30),
         h('span', null, h('b', null, g.npc.name), ` reached level ${g.to}${g.npc.hero!.points ? ` · ✦ ${g.npc.hero!.points}` : ''}`)))));
     }
     const anyPoints = members(s).some((x) => x.hero.points > 0);
@@ -1311,7 +1312,7 @@ export class Game {
         h('div', null, h('b', null, String(kills)), h('small', null, 'foes bested')),
         h('div', null, h('b', null, `${goldDelta >= 0 ? '+' : ''}${goldDelta}`), h('small', null, 'gold')),
       ),
-      h('div', { class: 'banter' }, comp ? portraitEl(comp.name, 40) : h('span', { class: 'fire-ico' }, '🔥'), h('p', null, out.banter)),
+      h('div', { class: 'banter' }, comp ? (comp.hero ? heroPortraitEl(comp.name, comp.hero.cls, 40) : portraitEl(comp.name, 40)) : h('span', { class: 'fire-ico' }, '🔥'), h('p', null, out.banter)),
       h('p', { class: 'hook' }, out.hook),
       h('p', { class: 'muted center small' }, '✓ Your tale is saved. A fine place to pause.'),
       h('button', { class: 'btn wide', onclick: () => shareCard(s, { kind: 'chapter', day: s.day, recap: out.recap, hook: out.hook, stats: [[String(explored), 'explored'], [String(events), 'deeds'], [String(kills), 'foes'], [`${goldDelta >= 0 ? '+' : ''}${goldDelta}`, 'gold']] }) }, '📤 Share this chapter'),
@@ -1350,7 +1351,7 @@ export class Game {
         h('div', null, h('small', null, label), h('b', null, it ? it.name : '—'), it ? h('small', null, itemDesc(it)) : null));
       const ph = potionHeal(s);
       sheet.set(
-        h('div', { class: 'panel-head' }, h('span', { class: 'hero-glyph', style: `background:${cls.color}` }, cls.glyph),
+        h('div', { class: 'panel-head' }, heroPortraitEl(p.name, p.cls, 56),
           h('div', null, h('h2', null, p.name), h('small', null, `Level ${p.level} ${cls.name} · AC ${armorClass(p)} · ATK ${fmtMod(attackBonus(p))} · PROF ${fmtMod(profBonus(p.level))}`))),
         h('div', { class: 'stat-grid' }, ...STATS.map((st) => h('div', { class: `stat ${cls.prof.includes(st) ? 'prof' : ''}` },
           h('small', null, st.toUpperCase()), h('b', null, fmtMod(mod(p.stats[st]))), h('span', null, String(p.stats[st]))))),
@@ -1383,7 +1384,7 @@ export class Game {
               sfx.coin();
               toast(`${n.name} equips ${it.name}.`, 'good');
               this.persist(); render();
-            } }, portraitEl(n.name, 18), compareTo(n.hero!, it).startsWith('▲') ? '▲' : ''))))),
+            } }, heroPortraitEl(n.name, n.hero!.cls, 20), compareTo(n.hero!, it).startsWith('▲') ? '▲' : ''))))),
         h('button', { class: 'btn wide', onclick: () => sheet.close() }, 'Close'),
       );
     };

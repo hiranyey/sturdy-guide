@@ -1,7 +1,7 @@
 // The talent tree sheet, shared by the hero and every companion: one tab per
 // party member, three branches of four talents, tap a talent to read it and learn it.
 import { h, Sheet, toast, bar, vibrate } from './dom';
-import { portraitEl } from './portrait';
+import { heroPortraitEl } from './art/heroes';
 import { sfx } from './audio';
 import { CLASSES, armorClass, attackBonus, fmtMod, mod, profBonus, itemDesc } from '../core/rules';
 import {
@@ -22,16 +22,9 @@ export function members(s: GameState): Member[] {
   ];
 }
 
-/** Small round avatar: class glyph for the hero, painted portrait for companions. */
+/** Round class portrait: the hero and companions share one style (face from the name, outfit from the class). */
 export function avatar(m: Member, size = 36) {
-  if (m.npc) {
-    const el = portraitEl(m.name, size);
-    el.classList.add('cls-ring');
-    el.style.setProperty('--cls', CLASSES[m.hero.cls].color);
-    return el;
-  }
-  const cls = CLASSES[m.hero.cls];
-  return h('span', { class: 'hero-glyph', style: `background:${cls.color};width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px` }, cls.glyph);
+  return heroPortraitEl(m.name, m.hero.cls, size);
 }
 
 export function classTag(hero: Hero) {
