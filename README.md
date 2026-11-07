@@ -47,7 +47,13 @@ OAuth needs a secure origin, so use `https://` or `localhost`.
 
 ### Deploy
 
-`.github/workflows/deploy.yml` builds and publishes to GitHub Pages on every push to `main`. Enable it under **Settings → Pages → Source: GitHub Actions**. The app is a PWA, so you can "Add to Home Screen" for a full-screen, offline-capable install.
+`.github/workflows/deploy.yml` tests the app, builds a container image, and queues a Vibeship deploy. It does not publish to GitHub Pages. Pushes to `main` and the default branch run it.
+
+The container listens on port 3000 on all interfaces, and `GET /health` returns 200 when the site is present. Saves stay in the browser, so the app needs no environment variables and does not write to disk.
+
+The image is `api.repoflow.io/hiranyeyg-6713/vibes/sturdy-guide`, tagged `:latest` and `:<commit sha>`. Actions needs the secrets `REPOFLOW_USERNAME`, `REPOFLOW_PASSWORD`, and `WEBHOOK_URL`.
+
+The app is a PWA, so you can "Add to Home Screen" for a full-screen, offline-capable install.
 
 ## Architecture
 
