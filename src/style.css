@@ -685,3 +685,10 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
 .hero-chip .portrait-wrap { line-height: 0; flex: none; }
 .panel-head .portrait-wrap { line-height: 0; flex: none; }
 .portrait-wrap { line-height: 0; }
+/* illustrated foes fill their sprite frame */
+.foe-sprite svg.foe-art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.foe-sprite { overflow: visible; }
+.foe-sprite .float { z-index: 4; }
+.choice-foe { flex: none; width: 34px; height: 34px; margin: -4px 8px -4px -4px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #3a2f55, #15121f); box-shadow: 0 0 0 1.5px rgba(233,64,87,0.6); line-height: 0; }
+.choice-foe svg { width: 100%; height: 100%; }
+.choice .choice-foe + .clabel { flex: 1; }

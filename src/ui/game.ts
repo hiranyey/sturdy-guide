@@ -10,6 +10,7 @@ import { rollCheck, DiceTray, d20Svg } from './dice';
 import { sfx } from './audio';
 import { portraitEl } from './portrait';
 import { heroPortraitEl } from './art/heroes';
+import { foeArt } from './art/foes';
 import { openSettings } from './settings-sheet';
 import { key, eq, distance, toPixel, compass, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
@@ -629,11 +630,11 @@ export class Game {
     speak(`${ev.title}. ${ev.text}`);
     await typewrite(text, ev.text, 2);
     for (const c of ev.choices) {
-      choicesEl.appendChild(this.choiceButton(c, () => this.resolveChoice(sheet, card, choicesEl, ev, c, ctx)));
+      choicesEl.appendChild(this.choiceButton(c, () => this.resolveChoice(sheet, card, choicesEl, ev, c, ctx), ctx.tier, ctx.poi === 'quest'));
     }
   }
 
-  private choiceButton(c: Choice, onClick: () => void) {
+  private choiceButton(c: Choice, onClick: () => void, tier = 1, boss = false) {
     const p = this.s.player;
     let badge: HTMLElement;
     if (c.kind === 'check' && c.stat && c.dc) {
@@ -653,6 +654,7 @@ export class Game {
       aria += `. ${STAT_NAMES[c.stat]} check, DC ${c.dc}, ${Math.round(successChance(cb.total, c.dc) * 100)} percent chance.`;
     } else aria += `. ${c.kind}.`;
     const btn = h('button', { class: `choice choice-${c.kind}`, 'aria-label': aria, onclick: () => { sfx.tap(); onClick(); } },
+      c.kind === 'fight' && c.enemy ? h('span', { class: 'choice-foe', 'aria-hidden': 'true', html: foeArt(c.enemy, { tier, boss }) }) : null,
       h('span', { class: 'clabel' }, c.label, c.reward ? h('span', { class: 'rhint', 'aria-hidden': 'true' }, rewardIcon[c.reward]) : null),
       badge,
     );
@@ -853,7 +855,7 @@ export class Game {
       const logEl = h('div', { class: 'clog' }, h('div', { class: 'cl system' }, intro));
       const foeHp = h('div');
       const intentEl = h('div', { class: 'intent' });
-      const sprite = h('div', { class: `foe-sprite ${boss ? 'boss' : ''}` }, enemy.emoji);
+      const sprite = h('div', { class: `foe-sprite ${boss ? 'boss' : ''}`, html: foeArt(spec, { tier, boss }) });
       const foeCard = h('div', { class: 'foe-card' }, sprite,
         h('div', { class: 'foe-info' },
           h('div', { class: 'foe-name' }, enemy.name, boss ? h('span', { class: 'boss-tag' }, 'BOSS') : null),
