@@ -114,7 +114,7 @@ body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hid
 .camp-btn .di { filter: drop-shadow(0 0 6px rgba(255,140,40,0.6)); }
 
 /* ---------- Buttons ---------- */
-.btn { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; padding: 11px 18px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); font-family: var(--head); font-size: 0.92rem; letter-spacing: 0.03em; transition: transform 0.1s, filter 0.2s; margin: 4px 0; }
+.btn { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; padding: 11px 18px; border-radius: 12px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); font-family: var(--head); font-size: 0.92rem; letter-spacing: 0.03em; transition: transform 0.1s, filter 0.2s; margin: 4px 0; }
 .btn:active:not(:disabled) { transform: scale(0.96); }
 .btn small { font-family: var(--body); font-size: 0.75rem; opacity: 0.8; letter-spacing: 0; margin-top: 2px; }
 .btn-primary { background: linear-gradient(180deg, #e9bf5e, #b8862e); color: #2a1a05; border-color: #ffe6a0; box-shadow: 0 4px 0 #7a5618, 0 6px 16px rgba(0,0,0,0.4); text-shadow: 0 1px 0 rgba(255,255,255,0.3); }
