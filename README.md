@@ -26,6 +26,17 @@ An **AI Dungeon Master** (any model on [OpenRouter](https://openrouter.ai)) writ
 - **Companions** (up to 2) fight beside you, heal you when you're in trouble, and **remember** what you did. Their memories go back into the AI prompts, so returning NPCs bring up your past together.
 - **Level ups** raise HP and let you add +2 to a stat. Loot is upgraded automatically, and villages let you buy, sell and rest.
 
+## Made for phones
+
+- **Gestures:** tap a hex to move. Press and hold a hex for its terrain, landmark, danger and move cost. Press and hold a choice for its exact odds ("need 16+ on the die, 25%, 44% with Inspiration") and what success gives. Flick the d20 upward to throw it (a harder flick tumbles longer). Swipe sheets down to close them. Drag to look around and pinch to zoom.
+- **Add to Home Screen:** offered after your first finished chapter. On Android and desktop Chrome or Edge this uses the native install prompt; on iOS it shows a step-by-step Share → Add to Home Screen guide. You can install any time from Settings. If you say "Maybe later", it waits 3 days before asking again.
+- **Share cards:** 1080×1350 images for a chapter recap (with a snapshot of your map), a natural 20, an achievement, or your hero. They open the native share sheet where supported, with "Save image" and "Copy caption" as fallbacks.
+- **Achievements:** 26 of them, from *First Steps* to *Wonders of the World*. Each shows a progress bar, and when one unlocks a banner appears that you can tap to share.
+- **Sound:** synthesized sound effects and optional ambient music whose mood follows the terrain (and changes for combat and camp), each with its own volume slider. *Read story aloud* narrates events and recaps using the device's voice.
+- **Accessibility:** a text size setting (S to XL), a Reduce motion toggle (which follows the OS setting by default), screen-reader labels and live announcements for dice results and outcomes, and difficulty badges marked with ✓ / ≈ / ! as well as colour.
+- **Battery saver:** the map redraws at full frame rate only while something is moving. Otherwise it idles at about 12 fps for ambient effects, or doesn't redraw at all with Reduce motion on.
+- **Portrait-first:** respects safe areas for notches and the Dynamic Island, and phones held sideways see a polite "turn your phone upright" note.
+
 ## Run it
 
 ```bash

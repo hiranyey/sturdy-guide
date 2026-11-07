@@ -83,13 +83,16 @@ export class Sheet {
   private resolver: (() => void) | null = null;
   readonly done: Promise<void>;
 
-  constructor(cls = '', opts: { dismissable?: boolean } = {}) {
+  constructor(cls = '', opts: { dismissable?: boolean; label?: string } = {}) {
     this.body = h('div', { class: `sheet-body ${cls}` });
     const backdrop = h('div', { class: 'sheet-backdrop', onclick: () => opts.dismissable && this.close() });
-    this.root = h('div', { class: 'sheet' }, backdrop, h('div', { class: 'sheet-panel' }, h('div', { class: 'sheet-grip' }), this.body));
+    const grip = h('div', { class: 'sheet-grip', 'aria-hidden': 'true' });
+    const panel = h('div', { class: 'sheet-panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.label ?? 'Panel' }, grip, this.body);
+    this.root = h('div', { class: 'sheet' }, backdrop, panel);
     this.done = new Promise((r) => (this.resolver = r));
     document.getElementById('overlay')!.appendChild(this.root);
     requestAnimationFrame(() => requestAnimationFrame(() => this.root.classList.add('open')));
+    swipeToDismiss(panel, this.body, () => !!opts.dismissable, () => this.close(), backdrop);
   }
 
   set(...children: Child[]) {
@@ -111,8 +114,109 @@ export class Sheet {
   }
 }
 
+/**
+ * Drag a sheet down to dismiss it. Starts from the grip, or anywhere when the
+ * content is scrolled to the top. Sheets that must be answered rubber-band back.
+ */
+function swipeToDismiss(panel: HTMLElement, scroller: HTMLElement, canDismiss: () => boolean, dismiss: () => void, backdrop: HTMLElement) {
+  let startY = 0, dy = 0, startT = 0, active = false, fromTop = false;
+  const begin = (y: number, onGrip: boolean) => {
+    startY = y;
+    dy = 0;
+    startT = performance.now();
+    fromTop = onGrip || scroller.scrollTop <= 0;
+    active = false;
+  };
+  const move = (y: number, e: Event) => {
+    if (!fromTop) return;
+    const d = y - startY;
+    if (!active && d > 8) active = true;
+    if (!active) return;
+    if (e.cancelable) e.preventDefault();
+    dy = Math.max(0, d);
+    const shown = canDismiss() ? dy : dy * 0.25;
+    panel.style.transition = 'none';
+    panel.style.transform = `translateY(${shown}px)`;
+    backdrop.style.opacity = String(Math.max(0.2, 1 - shown / 500));
+  };
+  const end = () => {
+    if (!active) return;
+    active = false;
+    const v = dy / Math.max(1, performance.now() - startT);
+    panel.style.transition = '';
+    backdrop.style.opacity = '';
+    if (canDismiss() && (dy > 120 || (dy > 40 && v > 0.6))) {
+      panel.style.transform = '';
+      dismiss();
+    } else panel.style.transform = '';
+  };
+  panel.addEventListener('touchstart', (e) => begin(e.touches[0].clientY, (e.target as HTMLElement).classList.contains('sheet-grip')), { passive: true });
+  panel.addEventListener('touchmove', (e) => move(e.touches[0].clientY, e), { passive: false });
+  panel.addEventListener('touchend', end);
+  panel.addEventListener('touchcancel', end);
+  // Mouse / pen: drag by the grip.
+  const grip = panel.querySelector('.sheet-grip') as HTMLElement;
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') return;
+    begin(e.clientY, true);
+    const mv = (ev: PointerEvent) => move(ev.clientY, ev);
+    const up = () => { end(); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', up);
+  });
+}
+
+/** Fire `fn` after a press-and-hold; suppresses the click that would follow. */
+export function longPress(el: HTMLElement, fn: (x: number, y: number) => void, ms = 450) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let fired = false, sx = 0, sy = 0;
+  el.addEventListener('pointerdown', (e) => {
+    fired = false;
+    sx = e.clientX;
+    sy = e.clientY;
+    timer = setTimeout(() => {
+      fired = true;
+      vibrate(12);
+      fn(sx, sy);
+    }, ms);
+  });
+  const cancel = () => { if (timer) clearTimeout(timer); timer = null; };
+  el.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
+  el.addEventListener('pointerup', cancel);
+  el.addEventListener('pointercancel', cancel);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+  el.addEventListener('click', (e) => {
+    if (fired) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      fired = false;
+    }
+  }, true);
+}
+
+/** Small floating info bubble anchored near a point; tap anywhere to dismiss. */
+export function popover(x: number, y: number, ...children: Child[]) {
+  document.querySelectorAll('.popover').forEach((p) => p.remove());
+  const el = h('div', { class: 'popover', role: 'tooltip' }, ...children);
+  document.body.appendChild(el);
+  const r = el.getBoundingClientRect();
+  const left = Math.max(10, Math.min(window.innerWidth - r.width - 10, x - r.width / 2));
+  const top = y - r.height - 18 > 10 ? y - r.height - 18 : y + 18;
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 200);
+    window.removeEventListener('pointerdown', close, true);
+  };
+  setTimeout(() => window.addEventListener('pointerdown', close, true), 50);
+  setTimeout(close, 5000);
+  return el;
+}
+
 export function modal(cls = ''): { root: HTMLElement; card: HTMLElement; close: () => void } {
-  const card = h('div', { class: `modal-card ${cls}` });
+  const card = h('div', { class: `modal-card ${cls}`, role: 'dialog', 'aria-modal': 'true' });
   const root = h('div', { class: 'modal' }, card);
   document.getElementById('overlay')!.appendChild(root);
   requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('open')));

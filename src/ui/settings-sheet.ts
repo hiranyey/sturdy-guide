@@ -2,7 +2,10 @@ import { h, Sheet, toast } from './dom';
 import { settings, saveSettings, MODEL_SUGGESTIONS, aiEnabled } from '../ai/settings';
 import { startOAuth, testConnection } from '../ai/openrouter';
 import { wipe } from '../core/state';
-import { sfx } from './audio';
+import { sfx, applyVolumes } from './audio';
+import { refreshMusic } from './music';
+import { applyPrefs, speechSupported, speak, stopSpeech } from './prefs';
+import { installAvailable, offerInstall, isStandalone } from './install';
 
 export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onChange?: () => void }) {
   const sheet = new Sheet('panel', { dismissable: true });
@@ -46,8 +49,18 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
       testOut,
       h('h3', null, 'Play'),
       toggle('Tap the die to roll (off = auto-roll)', settings.tapToRoll, (v) => (settings.tapToRoll = v)),
-      toggle('Sound effects', settings.sound, (v) => (settings.sound = v)),
       toggle('Fast text', settings.textSpeed >= 50, (v) => (settings.textSpeed = v ? 60 : 2)),
+      h('h3', null, 'Sound'),
+      toggle('Sound effects', settings.sound, (v) => { settings.sound = v; applyVolumes(); }),
+      slider('Effects volume', settings.sfxVol, (v) => { settings.sfxVol = v; applyVolumes(); }, () => sfx.coin()),
+      toggle('Ambient music', settings.music, (v) => { settings.music = v; applyVolumes(); refreshMusic(); }),
+      slider('Music volume', settings.musicVol, (v) => { settings.musicVol = v; applyVolumes(); }),
+      speechSupported() ? toggle('Read story aloud', settings.readAloud, (v) => { settings.readAloud = v; if (v) speak('The story will be read aloud.'); else stopSpeech(); }) : null,
+      h('h3', null, 'Accessibility'),
+      segmented('Text size', [[0.9, 'S'], [1, 'M'], [1.15, 'L'], [1.3, 'XL']], settings.textScale, (v) => { settings.textScale = v; applyPrefs(); render(); }),
+      toggle('Reduce motion', settings.reduceMotion, (v) => { settings.reduceMotion = v; applyPrefs(); }),
+      !isStandalone() ? h('h3', null, 'App') : null,
+      !isStandalone() ? h('button', { class: 'btn wide', onclick: () => offerInstall(true) }, installAvailable() ? '📲 Install Hexbound on this device' : '📲 Add to Home Screen') : null,
       opts.inGame ? h('h3', null, 'Journey') : null,
       opts.inGame ? h('button', { class: 'btn wide', onclick: () => { sheet.close(); opts.onQuit?.(); } }, '🏠 Save & return to title') : null,
       opts.inGame ? h('button', { class: 'btn btn-danger wide', onclick: () => {
@@ -60,6 +73,19 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
     );
   };
   render();
+}
+
+function slider(label: string, value: number, set: (v: number) => void, preview?: () => void) {
+  const input = h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(value), 'aria-label': label,
+    oninput: (e: Event) => set(Number((e.target as HTMLInputElement).value)),
+    onchange: () => { saveSettings(); preview?.(); },
+  });
+  return h('label', { class: 'range' }, h('span', null, label), input);
+}
+
+function segmented(label: string, options: [number, string][], value: number, set: (v: number) => void) {
+  return h('div', { class: 'seg', role: 'radiogroup', 'aria-label': label }, h('span', null, label),
+    ...options.map(([v, l]) => h('button', { class: v === value ? 'on' : '', role: 'radio', 'aria-checked': String(v === value), onclick: () => { set(v); saveSettings(); sfx.tap(); } }, l)));
 }
 
 function toggle(label: string, value: boolean, set: (v: boolean) => void) {

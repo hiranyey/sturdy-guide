@@ -1,4 +1,6 @@
 import './style.css';
+import './ui/install'; // registers beforeinstallprompt early
+import { applyPrefs } from './ui/prefs';
 import { MapView } from './ui/map';
 import { Game } from './ui/game';
 import { showTitle, showCreate, hideScreen, showLoading } from './ui/screens';
@@ -56,6 +58,7 @@ function start(s: GameState, isNew: boolean) {
 }
 
 async function boot() {
+  applyPrefs();
   try {
     if (await finishOAuth()) toast('Connected to OpenRouter! The AI Dungeon Master awaits.', 'good', 4000);
   } catch (e) {

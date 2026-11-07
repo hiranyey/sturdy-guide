@@ -1,19 +1,49 @@
 // Tiny WebAudio synth so the game has satisfying sound with zero asset weight.
+// Sound effects and music each have their own gain bus, so volumes are independent.
 import { settings } from '../ai/settings';
 
 let ctx: AudioContext | null = null;
-function ac() {
-  if (!settings.sound) return null;
+let sfxBus: GainNode | null = null;
+let musicBus: GainNode | null = null;
+
+/** Shared context; created lazily (browsers only allow audio after a user gesture). */
+export function audioCtx(): AudioContext | null {
   if (!ctx) {
-    try { ctx = new AudioContext(); } catch { return null; }
+    try {
+      ctx = new AudioContext();
+      sfxBus = ctx.createGain();
+      musicBus = ctx.createGain();
+      sfxBus.connect(ctx.destination);
+      musicBus.connect(ctx.destination);
+      applyVolumes();
+    } catch {
+      return null;
+    }
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
 }
 
+export function applyVolumes() {
+  if (!ctx || !sfxBus || !musicBus) return;
+  const t = ctx.currentTime;
+  sfxBus.gain.setTargetAtTime(settings.sound ? settings.sfxVol : 0, t, 0.05);
+  musicBus.gain.setTargetAtTime(settings.music ? settings.musicVol * 0.5 : 0, t, 0.3);
+}
+
+export function musicOut(): GainNode | null {
+  audioCtx();
+  return musicBus;
+}
+
+function sfx_ctx() {
+  if (!settings.sound || settings.sfxVol <= 0) return null;
+  return audioCtx();
+}
+
 function tone(freq: number, dur: number, type: OscillatorType = 'triangle', vol = 0.15, when = 0, slide = 0) {
-  const c = ac();
-  if (!c) return;
+  const c = sfx_ctx();
+  if (!c || !sfxBus) return;
   const t = c.currentTime + when;
   const o = c.createOscillator();
   const g = c.createGain();
@@ -23,14 +53,14 @@ function tone(freq: number, dur: number, type: OscillatorType = 'triangle', vol 
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(c.destination);
+  o.connect(g).connect(sfxBus);
   o.start(t);
   o.stop(t + dur + 0.05);
 }
 
 function click(when: number, vol = 0.25, freq = 2400) {
-  const c = ac();
-  if (!c) return;
+  const c = sfx_ctx();
+  if (!c || !sfxBus) return;
   const t = c.currentTime + when;
   const len = Math.floor(c.sampleRate * 0.03);
   const buf = c.createBuffer(1, len, c.sampleRate);
@@ -44,7 +74,7 @@ function click(when: number, vol = 0.25, freq = 2400) {
   f.Q.value = 1.5;
   const g = c.createGain();
   g.gain.value = vol;
-  src.connect(f).connect(g).connect(c.destination);
+  src.connect(f).connect(g).connect(sfxBus);
   src.start(t);
 }
 
@@ -68,4 +98,6 @@ export const sfx = {
   level() { [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, 0.5, 'triangle', 0.12, i * 0.1)); },
   tap() { click(0, 0.08, 3000); },
   heal() { [440, 554, 659].forEach((f, i) => tone(f, 0.4, 'sine', 0.1, i * 0.08)); },
+  achievement() { [659, 784, 988, 1319].forEach((f, i) => tone(f, 0.45, 'triangle', 0.11, i * 0.09)); tone(1976, 0.8, 'sine', 0.04, 0.38); },
+  whoosh() { click(0, 0.2, 900); click(0.05, 0.15, 700); },
 };

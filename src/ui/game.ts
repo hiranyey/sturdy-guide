@@ -1,4 +1,10 @@
-import { h, $, Sheet, modal, toast, typewrite, wait, bar, vibrate } from './dom';
+import { h, $, Sheet, modal, toast, typewrite, wait, bar, vibrate, longPress, popover } from './dom';
+import { setMood, moodForBiome } from './music';
+import { speak, stopSpeech, announce } from './prefs';
+import { offerInstall } from './install';
+import { shareCard } from './share';
+import { checkAchievements, trackSeen, track, ACHIEVEMENTS, achievementCount, type AchievementDef } from '../core/achievements';
+
 import { MapView } from './map';
 import { rollCheck, DiceTray, d20Svg } from './dice';
 import { sfx } from './audio';
@@ -9,7 +15,7 @@ import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pick
 import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen } from '../core/state';
 import {
   CLASSES, checkBonus, armorClass, attackBonus, fmtMod, mod, xpForNext, XP_LEVELS, heal, randomItem, takeItem, itemDesc,
-  equip, sellValue, profBonus, rollDice, gainXp,
+  equip, sellValue, profBonus, rollDice, gainXp, successChance,
 } from '../core/rules';
 import { applyCheck, questRewards, type Effects } from '../core/resolve';
 import { makeEnemy, startCombat, playRound, intentText, canUse, type Action, type Beat } from '../core/combat';
@@ -37,6 +43,7 @@ export class Game {
   constructor(public s: GameState, private map: MapView, private onQuit: () => void) {
     map.demo = false;
     map.onTap = (hex) => this.onTap(hex);
+    map.onLongPress = (hex, x, y) => this.tileInfo(hex, x, y);
     map.onFollowChange = (f) => this.mapUi.classList.toggle('free-cam', !f);
     map.snapTo(s.pos);
     this.buildChrome();
@@ -123,8 +130,90 @@ export class Game {
   }
 
   private persist() {
+    this.checkAch();
     save(this.s);
     this.renderHud();
+    this.map.invalidate(300);
+  }
+
+  // ================= Achievements =================
+  private achQueue: AchievementDef[] = [];
+  private achShowing = false;
+  private checkAch() {
+    const fresh = checkAchievements(this.s);
+    if (!fresh.length) return;
+    this.achQueue.push(...fresh);
+    for (const a of fresh) log(this.s, `earned the achievement "${a.name}"`, 'info');
+    if (!this.achShowing) this.nextAch();
+  }
+
+  private nextAch() {
+    const a = this.achQueue.shift();
+    if (!a) { this.achShowing = false; return; }
+    this.achShowing = true;
+    sfx.achievement();
+    vibrate([20, 40, 20, 40, 80]);
+    announce(`Achievement unlocked: ${a.name}. ${a.desc}`);
+    const el = h('button', { class: 'ach-banner', 'aria-label': `Achievement unlocked: ${a.name}. Tap to share.`, onclick: () => { el.remove(); shareCard(this.s, { kind: 'achievement', ach: a }); } },
+      h('span', { class: 'ach-icon' }, a.icon),
+      h('span', { class: 'ach-txt' }, h('small', null, 'Achievement unlocked'), h('b', null, a.name), h('span', null, a.desc)),
+      h('span', { class: 'ach-share' }, '📤'));
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => { el.remove(); this.nextAch(); }, 400);
+    }, 4200);
+  }
+
+  openAchievements() {
+    const s = this.s;
+    const t = track(s);
+    const sheet = new Sheet('panel', { dismissable: true, label: 'Achievements' });
+    sheet.set(
+      h('h2', null, `🏆 Achievements · ${achievementCount(s)}/${ACHIEVEMENTS.length}`),
+      h('div', { class: 'ach-grid' }, ...ACHIEVEMENTS.map((a) => {
+        const got = !!s.ach?.[a.id];
+        const pr = !got && a.progress ? a.progress(s, t) : null;
+        return h('button', { class: `ach-card ${got ? 'got' : ''}`, 'aria-label': `${a.name}: ${a.desc}${got ? ' Unlocked.' : ''}`, onclick: () => got && shareCard(s, { kind: 'achievement', ach: a }) },
+          h('span', { class: 'ach-icon' }, got ? a.icon : '🔒'),
+          h('b', null, a.name),
+          h('small', null, a.desc),
+          pr ? bar(pr[0], pr[1], 'xp ach-prog') : null,
+          pr ? h('small', { class: 'ach-num' }, `${pr[0]}/${pr[1]}`) : null,
+          got ? h('small', { class: 'ach-num' }, '📤 tap to share') : null);
+      })),
+      h('button', { class: 'btn wide', onclick: () => sheet.close() }, 'Close'),
+    );
+  }
+
+  // ================= Long-press tile info =================
+  private tileInfo(hx: Hex, x: number, y: number) {
+    const s = this.s;
+    const k = key(hx);
+    if (!s.revealed[k]) {
+      popover(x, y, h('b', null, 'Unexplored'), h('div', { class: 'pv-lore' }, 'The fog hides this place. Walk closer to reveal it.'));
+      return;
+    }
+    const b = biomeAt(hx, s.seed);
+    const info = BIOME_INFO[b];
+    const lm = landmarkAt(hx, s.seed);
+    const poi = poiAt(hx, s.seed);
+    const mem = s.tiles[k] || {};
+    const rows: [string, string][] = [];
+    if (s.quest && eq(hx, s.quest.target)) rows.push(['Quest', `★ ${s.quest.place}`]);
+    if (poi && poi !== 'start') rows.push(['Place', `${POI_LABEL[poi] ?? poi}${mem.done ? ' ✓ visited' : ''}`]);
+    if (lm) rows.push(['Landmark', `${LANDMARKS[lm].icon} ${LANDMARKS[lm].name}${mem.lm ? ' ✓' : ''}`]);
+    if (riverAt(hx, s.seed)) rows.push(['Water', '🌊 Stream (fordable)']);
+    rows.push(['Danger', '☠'.repeat(tierAt(hx))]);
+    rows.push(['Move cost', info.passable ? `${info.cost} 🔥` : 'Impassable']);
+    rows.push(['Distance', `${distance(s.pos, hx)} hex`]);
+    const region = s.regions[regionKey(hx)]?.name;
+    popover(x, y,
+      h('b', null, terrainName(hx, s.seed)),
+      region && region !== 'the wilds' ? h('div', { class: 'pv-lore' }, region) : null,
+      ...rows.map(([a, v]) => h('div', { class: 'pv-row' }, h('span', null, a), h('span', null, v))),
+      lm && mem.lm ? h('div', { class: 'pv-lore' }, LANDMARKS[lm].lore[0]) : null);
   }
 
   // ================= Session flow =================
@@ -139,6 +228,8 @@ export class Game {
       if (!this.s.quest) await this.ensureQuest(true);
     }
     this.regionCheck(this.s.pos);
+    if (this.s.omen) trackSeen(this.s, 'omens', this.s.omen);
+    setMood(moodForBiome(biomeAt(this.s.pos, this.s.seed)));
     this.persist();
     if (this.s.stamina <= 0) this.confirmCamp(true);
   }
@@ -151,6 +242,7 @@ export class Game {
       h('h1', { class: 'intro-title' }, this.s.world.name),
       text,
     );
+    speak(this.s.world.hook);
     await typewrite(text, this.s.world.hook, 1);
     await new Promise<void>((res) => m.card.append(
       h('div', { class: 'tip' }, '🔥 Each day you carry 12 torches. Every step burns one. When they run out, make camp — your story is saved and summarised. Perfect for short sessions.'),
@@ -346,6 +438,9 @@ export class Game {
     this.regionCheck(hx);
     const biome = biomeAt(hx, s.seed);
     const tier = tierAt(hx);
+    trackSeen(s, 'biomes', biome);
+    trackSeen(s, 'styles', `${biome}:${styleAt(hx, s.seed)}`);
+    setMood(moodForBiome(biome));
 
     if (s.quest && eq(hx, s.quest.target)) {
       await this.runEvent({ hex: hx, biome, poi: 'quest', tier: Math.max(tier, 1 + Math.floor(s.questsDone / 2)), regionName: this.regionName(hx) });
@@ -363,6 +458,7 @@ export class Game {
     const lmk = landmarkAt(hx, s.seed);
     if (lmk && !mem.lm) {
       mem.lm = 1;
+      trackSeen(s, 'landmarks', lmk);
       this.calm = 1;
       if (LANDMARKS[lmk].event) {
         await this.runEvent({ hex: hx, biome, poi: 'wild', tier, regionName: this.regionName(hx), landmark: lmk });
@@ -465,6 +561,7 @@ export class Game {
     const ev = await genEvent(s, ctx);
     await this.showEvent(sheet, ev, ctx, kindLabel);
     await sheet.done;
+    stopSpeech();
     this.persist();
   }
 
@@ -488,6 +585,7 @@ export class Game {
       choicesEl,
     );
     sheet.set(card);
+    speak(`${ev.title}. ${ev.text}`);
     await typewrite(text, ev.text, 2);
     for (const c of ev.choices) {
       choicesEl.appendChild(this.choiceButton(c, () => this.resolveChoice(sheet, card, choicesEl, ev, c, ctx)));
@@ -507,10 +605,33 @@ export class Game {
       badge = h('span', { class: `cbadge ${cls}` }, label);
     }
     const rewardIcon: Record<string, string> = { gold: '🪙', item: '🎁', ally: '♥', heal: '✚', lore: '🗺', xp: '★' };
-    return h('button', { class: `choice choice-${c.kind}`, onclick: () => { sfx.tap(); onClick(); } },
-      h('span', { class: 'clabel' }, c.label, c.reward ? h('span', { class: 'rhint' }, rewardIcon[c.reward]) : null),
+    const rewardText: Record<string, string> = { gold: 'Gold', item: 'An item', ally: 'Win a friend', heal: 'Healing', lore: 'Knowledge & map reveal', xp: 'Experience' };
+    let aria = c.label;
+    if (c.kind === 'check' && c.stat && c.dc) {
+      const cb = checkBonus(p, c.stat);
+      aria += `. ${STAT_NAMES[c.stat]} check, DC ${c.dc}, ${Math.round(successChance(cb.total, c.dc) * 100)} percent chance.`;
+    } else aria += `. ${c.kind}.`;
+    const btn = h('button', { class: `choice choice-${c.kind}`, 'aria-label': aria, onclick: () => { sfx.tap(); onClick(); } },
+      h('span', { class: 'clabel' }, c.label, c.reward ? h('span', { class: 'rhint', 'aria-hidden': 'true' }, rewardIcon[c.reward]) : null),
       badge,
     );
+    // Press and hold a choice to see exactly what you are getting into.
+    longPress(btn, (x, y) => {
+      if (c.kind === 'check' && c.stat && c.dc) {
+        const cb = checkBonus(p, c.stat);
+        const pct = Math.round(successChance(cb.total, c.dc) * 100);
+        popover(x, y, h('b', null, `${STAT_NAMES[c.stat]} check · DC ${c.dc}`),
+          h('div', { class: 'pv-row' }, h('span', null, 'Your roll'), h('span', null, `d20 ${cb.parts.map((q) => `${fmtMod(q.value)} ${q.label}`).join(' ')}`)),
+          h('div', { class: 'pv-row' }, h('span', null, 'Need'), h('span', null, `${Math.max(2, c.dc - cb.total)}+ on the die`)),
+          h('div', { class: 'pv-row' }, h('span', null, 'Chance'), h('span', null, `${pct}%${p.inspiration ? ` (${Math.round(successChance(cb.total, c.dc, 1) * 100)}% with ✨)` : ''}`)),
+          c.reward ? h('div', { class: 'pv-row' }, h('span', null, 'On success'), h('span', null, `${rewardIcon[c.reward]} ${rewardText[c.reward]}`)) : null,
+          h('div', { class: 'pv-lore' }, ['str', 'dex', 'con'].includes(c.stat) ? 'Failing hurts: you may lose HP.' : 'Failing costs time: you may lose a torch.'));
+      } else {
+        const what: Record<string, string> = { fight: `Starts a fight${c.enemy ? ` with ${c.enemy.name}` : ''}.`, trade: 'Opens the market: buy potions and gear, sell loot.', rest: 'Rest to recover HP.', leave: 'Walk away. Nothing gained, nothing lost.' };
+        popover(x, y, h('b', null, c.label), h('div', { class: 'pv-lore' }, what[c.kind] ?? ''));
+      }
+    });
+    return btn;
   }
 
   private async resolveChoice(sheet: Sheet, card: HTMLElement, choicesEl: HTMLElement, ev: GameEvent, c: Choice, ctx: EventContext) {
@@ -580,7 +701,11 @@ export class Game {
       bonus: cb.total,
       parts: cb.parts,
       canInspire: p.inspiration,
+      extra: (r) => r.crit
+        ? h('button', { class: 'share-btn', onclick: () => shareCard(s, { kind: 'crit', title: `${STAT_NAMES[stat]} check`, subtitle: c.label, total: r.total, dc: r.dc }) }, '📤 Share this moment')
+        : null,
       onRoll: (r, usedInsp) => {
+        if (ctx.landmark === 'sword_stone' && stat === 'str' && r.success) track(s).sword = true;
         if (usedInsp) p.inspiration = false;
         fx = applyCheck(s, ev, c, r, ctx.tier, ctx.regionName, isQuest);
         outcomeP = genOutcome(s, ev, c, { success: r.success, crit: r.crit, fumble: r.fumble, effects: fx.lines });
@@ -621,6 +746,8 @@ export class Game {
     choicesEl.replaceWith(block);
     block.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     if (effects.some((e) => e.includes('gold') && !e.startsWith('-'))) sfx.coin();
+    speak(text);
+    announce(`${text} ${effects.join(', ')}`);
     await typewrite(t, text, 2);
     const s = this.s;
     if (fx?.recruit) {
@@ -629,6 +756,7 @@ export class Game {
         h('div', { class: 'recruit' }, portraitEl(npc.name, 44), h('span', null, h('b', null, npc.name), ' wants to travel with you!')),
         h('button', { class: 'choice choice-ally', onclick: () => {
           npc.inParty = true;
+          track(s).recruits++;
           npc.power = Math.max(npc.power, s.player.level);
           s.stats.friends++;
           remember(npc, `Joined ${s.player.name}'s party on day ${s.day}`);
@@ -660,6 +788,7 @@ export class Game {
       const s = this.s, p = s.player;
       const enemy = makeEnemy(spec, tier, boss);
       const cs = startCombat(enemy);
+      setMood('combat');
       const sheet = new Sheet('combat');
       const tray = new DiceTray();
       const logEl = h('div', { class: 'clog' }, h('div', { class: 'cl system' }, intro));
@@ -748,7 +877,11 @@ export class Game {
         sfx.tap();
         const useInsp = inspire && p.inspiration;
         const beats = playRound(s, cs, a, useInsp);
-        for (const b of beats) await playBeat(b);
+        if (a === 'talk' && (cs.end === 'friend' || cs.end === 'flee')) track(s).talks++;
+        for (const b of beats) {
+          if (b.actor === 'system' && b.text.startsWith('DEATH SAVE') && b.d20?.success) track(s).deathSaves++;
+          await playBeat(b);
+        }
         if (cs.end) return finish();
         setEnabled(true);
       };
@@ -784,6 +917,7 @@ export class Game {
           if (party(s).length < 2) {
             actionsEl.append(h('button', { class: 'act act-talk', onclick: () => {
               npc.inParty = true;
+              track(s).recruits++;
               s.stats.friends++;
               log(s, `${npc.name}, once a foe, joined the party`, 'friend');
               toast(`${npc.name} joined your party!`, 'good');
@@ -801,6 +935,7 @@ export class Game {
         }
         const close = async () => {
           sheet.close();
+          setMood(moodForBiome(biomeAt(s.pos, s.seed)));
           this.persist();
           if (levels) await this.levelUp(levels);
           if (end === 'down') await this.downed();
@@ -936,12 +1071,13 @@ export class Game {
         h('h2', { class: 'ev-title' }, 'Wares & Wonders'),
         h('div', { class: 'shop-list' },
           h('div', { class: 'shop-item' }, h('span', { class: 'si-icon' }, '🧪'), h('div', null, h('b', null, 'Healing Potion'), h('small', null, `Heals 2d4+4 · you have ${p.potions}`)),
-            h('button', { class: 'buy', disabled: p.gold < potionPrice || p.potions >= 8, onclick: () => { p.gold -= potionPrice; p.potions++; sfx.coin(); this.persist(); render(); } }, `${potionPrice}g`)),
+            h('button', { class: 'buy', disabled: p.gold < potionPrice || p.potions >= 8, onclick: () => { p.gold -= potionPrice; p.potions++; track(s).buys++; sfx.coin(); this.persist(); render(); } }, `${potionPrice}g`)),
           ...stock.map((it) => h('div', { class: `shop-item ${it.sold ? 'sold' : ''}` },
             h('span', { class: 'si-icon' }, it.slot === 'weapon' ? '🗡️' : it.slot === 'armor' ? '🛡️' : '💍'),
             h('div', null, h('b', null, it.name), h('small', null, `${itemDesc(it)} · ${compareTo(p, it)}`)),
             h('button', { class: 'buy', disabled: it.sold || p.gold < it.price, onclick: () => {
               p.gold -= it.price; it.sold = true;
+              track(s).buys++;
               const { price: _price, sold: _sold, ...item } = it;
               const eqd = takeItem(p, item);
               sfx.coin();
@@ -988,6 +1124,7 @@ export class Game {
     sheet.set(h('div', { class: 'parchment' },
       h('div', { class: 'campfire' }, h('span', { class: 'flame f1' }), h('span', { class: 'flame f2' }), h('span', { class: 'flame f3' }), h('span', { class: 'logs' })),
       h('p', { class: 'muted center' }, aiEnabled() ? 'The bard by the fire writes today\'s chapter…' : 'The fire crackles as you recount the day…')));
+    setMood('camp');
     const out = await genChapterEnd(s);
     const goldDelta = s.player.gold - s.stats.chapterStartGold;
     const explored = s.stats.chapterExplored, kills = s.stats.chapterKills;
@@ -1012,13 +1149,18 @@ export class Game {
       h('div', { class: 'banter' }, comp ? portraitEl(comp.name, 40) : h('span', { class: 'fire-ico' }, '🔥'), h('p', null, out.banter)),
       h('p', { class: 'hook' }, out.hook),
       h('p', { class: 'muted center small' }, '✓ Your tale is saved. A fine place to pause.'),
+      h('button', { class: 'btn wide', onclick: () => shareCard(s, { kind: 'chapter', day: s.day, recap: out.recap, hook: out.hook, stats: [[String(explored), 'explored'], [String(events), 'deeds'], [String(kills), 'foes'], [`${goldDelta >= 0 ? '+' : ''}${goldDelta}`, 'gold']] }) }, '📤 Share this chapter'),
       h('button', { class: 'btn btn-primary wide', onclick: () => sheet.close() }, '🌅 Sleep until dawn'),
     ));
-    save(s);
+    speak(`${out.recap} ${out.hook}`);
+    this.persist();
     await sheet.done;
     s.day++;
     s.player.hp = s.player.maxHp;
+    stopSpeech();
     const omen = startDay(s);
+    trackSeen(s, 'omens', omen.id);
+    setMood(moodForBiome(biomeAt(s.pos, s.seed)));
     s.stats.chapterStartGold = s.player.gold;
     s.stats.chapterKills = 0;
     s.stats.chapterExplored = 0;
@@ -1029,6 +1171,8 @@ export class Game {
     sfx.level();
     toast(`☀️ Day ${s.day} dawns — ${s.stamina} fresh torches.`, 'gold', 3000);
     setTimeout(() => toast(`${omen.icon} Omen: ${omen.name} — ${omen.desc}`, 'info', 4200), 600);
+    // The first finished chapter is the moment players are hooked: offer the home-screen install.
+    setTimeout(() => offerInstall(false), 5600);
   }
 
   // ================= Sheets: bag / party / journal =================
@@ -1090,6 +1234,7 @@ export class Game {
           h('div', null, h('b', null, n.name), h('small', null, `${n.role} · met day ${n.metDay} · ${affinityLabel(n.affinity)}`)),
           n.affinity >= 30 && allies.length < 2 ? h('button', { class: 'buy', onclick: () => {
             n.inParty = true;
+            track(s).recruits++;
             s.stats.friends++;
             log(s, `${n.name} rejoined the party`, 'friend');
             this.persist(); render();
@@ -1106,6 +1251,10 @@ export class Game {
     const today = chapterLog(s).filter((l) => l.kind !== 'info');
     sheet.set(
       h('h2', null, '📜 ', s.world.name),
+      h('div', { class: 'row journal-actions' },
+        h('button', { class: 'btn', onclick: () => { sheet.close(); this.openAchievements(); } }, `🏆 Achievements ${achievementCount(s)}/${ACHIEVEMENTS.length}`),
+        h('button', { class: 'btn', onclick: () => shareCard(s, { kind: 'hero' }) }, '📤 Share my hero'),
+      ),
       s.quest ? h('div', { class: 'today' }, h('small', null, `Quest ${s.questsDone + 1}`), h('b', null, `★ ${s.quest.title}`), h('span', null, s.quest.description),
         h('small', null, `Destination: ${s.quest.place} · ${distance(s.pos, s.quest.target)} hexes away`)) : null,
       h('h3', null, 'The story so far'),

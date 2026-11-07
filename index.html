@@ -18,11 +18,12 @@
   <body>
     <div id="app">
       <header id="hud"></header>
-      <main id="map-wrap"><canvas id="map"></canvas><div id="map-ui"></div></main>
+      <main id="map-wrap"><canvas id="map" role="application" aria-label="World map. Tap a glowing hex to move, press and hold a hex for details, drag to look around, pinch to zoom."></canvas><div id="map-ui"></div></main>
       <footer id="dock"></footer>
     </div>
     <div id="screen" class="screen"></div>
     <div id="overlay"></div>
+    <div class="rotate-note" role="alert"><div class="rn-icon">📱</div><b>Turn your phone upright</b><span>Hexbound is designed for portrait play.</span></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

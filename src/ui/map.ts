@@ -5,6 +5,7 @@ import { CLASSES } from '../core/rules';
 import { party } from '../core/state';
 import type { Biome, GameState, PoiKind } from '../core/types';
 import { styleAt, riverMask, riverAt, landmarkAt } from '../core/terrain';
+import { reducedMotion } from './prefs';
 import { hexPath, palette, decorate, drawRiver, riverSegments, drawLandmark, waterGlint, type Ctx } from './terrain-art';
 
 
@@ -295,6 +296,17 @@ export class MapView {
   /** title-screen mode: slow drifting camera, no player token */
   demo = false;
   onFollowChange: (following: boolean) => void = () => {};
+  onLongPress: (h: Hex, x: number, y: number) => void = () => {};
+  /** Render at full rate until this time; otherwise idle at a low ambient rate (battery saver). */
+  private wakeUntil = 0;
+  private lastDraw = 0;
+  private longTimer: ReturnType<typeof setTimeout> | null = null;
+  private longFired = false;
+
+  /** Ask for smooth redraws for a moment (input, state changes). */
+  invalidate(ms = 700) {
+    this.wakeUntil = Math.max(this.wakeUntil, performance.now() + ms);
+  }
 
   constructor(canvas: HTMLCanvasElement, private getState: () => GameState | null) {
     this.canvas = canvas;
@@ -303,7 +315,14 @@ export class MapView {
     this.resize();
     this.bindInput();
     const loop = (t: number) => {
-      this.draw(t);
+      const settling = Math.abs(this.camTarget.x - this.cam.x) + Math.abs(this.camTarget.y - this.cam.y) > 0.4;
+      const busy = this.moveAnim || settling || this.flash || t < this.wakeUntil || this.pointers.size > 0 || (this.demo && !reducedMotion());
+      // Battery saver: full frame rate only while something moves; ambient effects at ~12fps; none with reduced motion.
+      const ambientDue = !reducedMotion() && t - this.lastDraw > 83;
+      if (busy || ambientDue || this.lastDraw === 0) {
+        this.lastDraw = t;
+        this.draw(t);
+      }
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -319,12 +338,14 @@ export class MapView {
     this.canvas.style.height = `${this.h}px`;
     const auto = Math.max(26, Math.min(44, this.w / 11));
     if (!this.userZoomed) this.setSize(auto);
+    this.invalidate();
   }
 
   private userZoomed = false;
   private setSize(s: number) {
     const old = this.size;
     this.size = Math.max(20, Math.min(64, s));
+    this.invalidate();
     if (old !== this.size) {
       this.cache.clear();
       const k = this.size / old;
@@ -341,9 +362,11 @@ export class MapView {
     this.camTarget = { ...p };
     this.follow = true;
     this.onFollowChange(true);
+    this.invalidate();
   }
 
   recenter() {
+    this.invalidate();
     this.follow = true;
     this.onFollowChange(true);
   }
@@ -366,10 +389,22 @@ export class MapView {
 
   private bindInput() {
     const c = this.canvas;
+    c.addEventListener('contextmenu', (e) => e.preventDefault());
     c.addEventListener('pointerdown', (e) => {
       c.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (this.pointers.size === 1) this.dragStart = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false };
+      this.invalidate();
+      if (this.pointers.size === 1) {
+        this.dragStart = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false };
+        this.longFired = false;
+        if (this.longTimer) clearTimeout(this.longTimer);
+        const { clientX, clientY } = e;
+        this.longTimer = setTimeout(() => {
+          if (!this.dragStart || this.dragStart.moved || this.pointers.size !== 1) return;
+          this.longFired = true;
+          this.onLongPress(this.hexAt(clientX, clientY), clientX, clientY);
+        }, 450);
+      } else if (this.longTimer) clearTimeout(this.longTimer);
       if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
         this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), size: this.size };
@@ -404,12 +439,9 @@ export class MapView {
       this.pointers.delete(e.pointerId);
       if (this.pointers.size < 2) this.pinch = null;
       if (this.pointers.size === 0) {
-        if (ds && !ds.moved && e.type === 'pointerup') {
-          const rect = c.getBoundingClientRect();
-          const wx = e.clientX - rect.left - this.w / 2 + this.cam.x;
-          const wy = e.clientY - rect.top - this.h / 2 + this.cam.y;
-          this.onTap(fromPixel(wx, wy, this.size));
-        }
+        if (this.longTimer) clearTimeout(this.longTimer);
+        if (ds && !ds.moved && e.type === 'pointerup' && !this.longFired) this.onTap(this.hexAt(e.clientX, e.clientY));
+        this.longFired = false;
         this.dragStart = null;
       }
     };
@@ -420,6 +452,13 @@ export class MapView {
       this.userZoomed = true;
       this.setSize(this.size * (e.deltaY < 0 ? 1.1 : 0.9));
     }, { passive: false });
+  }
+
+  hexAt(clientX: number, clientY: number): Hex {
+    const rect = this.canvas.getBoundingClientRect();
+    const wx = clientX - rect.left - this.w / 2 + this.cam.x;
+    const wy = clientY - rect.top - this.h / 2 + this.cam.y;
+    return fromPixel(wx, wy, this.size);
   }
 
   zoom(f: number) {
@@ -515,7 +554,9 @@ export class MapView {
   }
 
   // ----- render -----
-  draw(t: number) {
+  draw(now: number) {
+    // With reduced motion, ambient animation (fires, glows, bobbing) freezes.
+    const t = reducedMotion() ? 0 : now;
     const s = this.getState();
     const ctx = this.ctx;
     const dpr = this.dpr;
@@ -532,7 +573,7 @@ export class MapView {
     // player animation
     if (this.moveAnim) {
       const m = this.moveAnim;
-      const k = Math.min(1, (t - m.t0) / m.dur);
+      const k = Math.min(1, (now - m.t0) / m.dur);
       const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
       this.player.x = m.from.x + (m.to.x - m.from.x) * e;
       this.player.y = m.from.y + (m.to.y - m.from.y) * e;
@@ -632,7 +673,7 @@ export class MapView {
 
     // tap flash
     if (this.flash) {
-      const k = (t - this.flash.t) / 400;
+      const k = (now - this.flash.t) / 400;
       if (k > 1) this.flash = null;
       else {
         const p = toPixel(this.flash.h, size);

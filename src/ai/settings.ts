@@ -4,6 +4,13 @@ export interface Settings {
   tapToRoll: boolean;
   sound: boolean;
   textSpeed: number; // chars per frame
+  sfxVol: number; // 0..1
+  music: boolean;
+  musicVol: number; // 0..1
+  textScale: number; // 0.9..1.3
+  reduceMotion: boolean;
+  readAloud: boolean;
+  installDismissedAt: number;
 }
 
 const KEY = 'hexbound.settings';
@@ -17,7 +24,15 @@ export const MODEL_SUGGESTIONS = [
   'deepseek/deepseek-chat-v3.1',
 ];
 
-const defaults: Settings = { apiKey: '', model: DEFAULT_MODEL, tapToRoll: true, sound: true, textSpeed: 2 };
+const prefersReducedMotion = (() => {
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+})();
+
+const defaults: Settings = {
+  apiKey: '', model: DEFAULT_MODEL, tapToRoll: true, sound: true, textSpeed: 2,
+  sfxVol: 0.8, music: false, musicVol: 0.5, textScale: 1, reduceMotion: prefersReducedMotion, readAloud: false,
+  installDismissedAt: 0,
+};
 
 export const settings: Settings = (() => {
   try {

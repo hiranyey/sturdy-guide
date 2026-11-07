@@ -99,3 +99,20 @@ describe('AI output handling', () => {
     expect(ev.title.length).toBeGreaterThan(0);
   });
 });
+
+import { checkAchievements, trackSeen, track, ACHIEVEMENTS } from './achievements';
+describe('achievements', () => {
+  it('unlocks once and tracks distinct sightings', () => {
+    const s = createGame('T', 'rogue', 'heroic', { name: 'W', hook: 'h' });
+    expect(checkAchievements(s)).toHaveLength(0);
+    s.stats.explored = 12;
+    s.stats.crits = 1;
+    const got = checkAchievements(s).map((a) => a.id);
+    expect(got).toEqual(expect.arrayContaining(['first-steps', 'nat20']));
+    expect(checkAchievements(s)).toHaveLength(0);
+    trackSeen(s, 'landmarks', 'well');
+    trackSeen(s, 'landmarks', 'well');
+    expect(track(s).landmarks).toEqual(['well']);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
+  });
+});

@@ -115,6 +115,10 @@ export interface GameState {
   flags: string[];
   chapters: Chapter[];
   omen?: string;
+  /** unlocked achievements: id -> unlock time */
+  ach?: Record<string, number>;
+  /** counters used by achievements */
+  track?: Track;
   stats: { kills: number; friends: number; explored: number; crits: number; fumbles: number; chapterStartGold: number; chapterKills: number; chapterExplored: number };
 }
 
@@ -153,4 +157,16 @@ export interface EventContext {
   terrain?: string;
   /** landmark kind the scene is built around */
   landmark?: string;
+}
+
+export interface Track {
+  landmarks: string[];
+  biomes: string[];
+  styles: string[];
+  omens: string[];
+  buys: number;
+  talks: number;
+  deathSaves: number;
+  recruits: number;
+  sword: boolean;
 }

@@ -2,6 +2,7 @@ import { h, wait, vibrate } from './dom';
 import { sfx } from './audio';
 import { fmtMod, rollD20, successChance, type D20Roll } from '../core/rules';
 import { settings } from '../ai/settings';
+import { announce, reducedMotion } from './prefs';
 import type { DmgRoll } from '../core/combat';
 
 export function d20Svg(value: number | string, cls = ''): string {
@@ -52,6 +53,7 @@ function burst(host: HTMLElement, color: string, n = 22) {
 }
 
 async function tumble(dieHost: HTMLElement, final: number, ms: number, sides = 20) {
+  if (reducedMotion()) ms = Math.min(ms, 250);
   dieHost.classList.remove('landed', 'crit', 'fumble');
   dieHost.classList.add('rolling');
   sfx.roll(ms / 1000);
@@ -90,6 +92,10 @@ export interface CheckOptions {
   roll?: D20Roll;
   /** fired the instant the die is thrown, before the animation */
   onRoll?: (roll: D20Roll, usedInspiration: boolean) => void;
+  /** fired when the die lands (after the animation) */
+  onLanded?: (roll: D20Roll) => void;
+  /** optional extra control shown with the result (e.g. share a natural 20) */
+  extra?: (roll: D20Roll) => HTMLElement | null;
 }
 
 /** Full-screen check: shows DC & odds, player taps the die, it tumbles, lands. */
@@ -105,11 +111,11 @@ export function rollCheck(opts: CheckOptions): Promise<{ roll: D20Roll; usedInsp
     };
     updateOdds();
 
-    const dieA = h('div', { class: 'die-host big', html: d20Svg(20) });
-    const dieB = h('div', { class: 'die-host big ghost', html: d20Svg(20) });
+    const dieA = h('div', { class: 'die-host big', html: d20Svg(20), role: 'button', tabindex: '0', 'aria-label': `Roll d20 for ${opts.title}, DC ${opts.dc}` });
+    const dieB = h('div', { class: 'die-host big ghost', html: d20Svg(20), 'aria-hidden': 'true' });
     const diceRow = h('div', { class: 'dice-row' }, dieA);
     const result = h('div', { class: 'roll-result' });
-    const hint = h('div', { class: 'tap-hint' }, 'Tap the die to roll');
+    const hint = h('div', { class: 'tap-hint' }, 'Tap — or flick the die upward — to roll');
 
     const inspireBtn = opts.canInspire && adv !== 1
       ? h('button', {
@@ -147,14 +153,19 @@ export function rollCheck(opts: CheckOptions): Promise<{ roll: D20Roll; usedInsp
     requestAnimationFrame(() => overlay.classList.add('open'));
 
     let rolled = false;
-    const doRoll = async () => {
+    const doRoll = async (power = 1) => {
       if (rolled) return;
       rolled = true;
       hint.textContent = '';
       inspireBtn?.remove();
       const roll = opts.roll ?? rollD20(opts.bonus, opts.dc, adv, opts.parts);
       opts.onRoll?.(roll, usedInspiration);
-      const ms = 1100;
+      // A harder flick tumbles longer; reduced motion keeps it brief.
+      const ms = reducedMotion() ? 300 : Math.round(1100 * Math.max(0.85, Math.min(1.6, power)));
+      if (power > 1 && !reducedMotion()) {
+        diceRow.classList.add('thrown');
+        diceRow.style.setProperty('--throw', `${Math.min(220, 80 * power)}px`);
+      }
       const tumbles = [tumble(dieA, roll.dice[0], ms)];
       if (roll.dice.length > 1) tumbles.push(tumble(dieB.parentElement ? dieB : dieA, roll.dice[1], ms + 150));
       await Promise.all(tumbles);
@@ -176,6 +187,8 @@ export function rollCheck(opts: CheckOptions): Promise<{ roll: D20Roll; usedInsp
       else sfx.fail();
 
       const verdict = roll.crit ? 'CRITICAL SUCCESS!' : roll.fumble ? 'CRITICAL FAIL!' : roll.success ? 'SUCCESS' : 'FAILURE';
+      announce(`Rolled ${roll.kept}, total ${roll.total} against DC ${roll.dc}. ${verdict}`);
+      opts.onLanded?.(roll);
       result.className = `roll-result show ${roll.crit ? 'crit' : roll.fumble ? 'fumble' : roll.success ? 'ok' : 'bad'}`;
       result.innerHTML = '';
       result.append(
@@ -188,11 +201,25 @@ export function rollCheck(opts: CheckOptions): Promise<{ roll: D20Roll; usedInsp
         resolve({ roll, usedInspiration });
       };
       await wait(350);
-      result.appendChild(h('button', { class: 'btn btn-primary', onclick: close }, 'Continue'));
+      const extra = opts.extra?.(roll);
+      if (extra) result.appendChild(extra);
+      const cont = h('button', { class: 'btn btn-primary', onclick: close }, 'Continue');
+      result.appendChild(cont);
+      cont.focus({ preventScroll: true });
     };
-    dieA.addEventListener('click', doRoll);
-    dieB.addEventListener('click', doRoll);
-    if (!settings.tapToRoll) setTimeout(doRoll, 450);
+    // Flick-to-throw: an upward swipe on the die rolls it, harder flicks tumble longer.
+    let fy = 0, ft = 0;
+    for (const die of [dieA, dieB]) {
+      die.addEventListener('pointerdown', (e) => { fy = e.clientY; ft = performance.now(); });
+      die.addEventListener('pointerup', (e) => {
+        const dy = fy - e.clientY;
+        const v = dy / Math.max(1, performance.now() - ft);
+        if (dy > 30) doRoll(1 + Math.min(1, v));
+      });
+      die.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') doRoll(); });
+      die.addEventListener('click', () => doRoll());
+    }
+    if (!settings.tapToRoll) setTimeout(() => doRoll(), 450);
     else overlay.querySelector('.dice-card')!.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('button')) return;
       doRoll();
