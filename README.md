@@ -45,15 +45,41 @@ Choose any model (the default is `google/gemini-2.5-flash`, which is fast and ch
 
 OAuth needs a secure origin, so use `https://` or `localhost`.
 
+### Configuration
+
+The game itself needs **no environment variables**. It is a static site, and saves and settings live in each player's browser. The OpenRouter key is entered by each player in **Settings & AI**. Never bake it in at build time, because anything in the bundle is public.
+
+| Where | Name | Required | Purpose |
+| --- | --- | --- | --- |
+| Container | `PORT` | no (defaults to `3000`, set in the Dockerfile) | Port `scripts/serve.mjs` listens on |
+| GitHub Actions secret | `REPOFLOW_USERNAME` | yes, to deploy | Registry login that can push the image |
+| GitHub Actions secret | `REPOFLOW_PASSWORD` | yes, to deploy | Password for that login |
+| GitHub Actions secret | `WEBHOOK_URL` | yes, to deploy | Vibeship deploy webhook. Treat it like a password: anyone holding it can deploy the project |
+
+Add the secrets under **Settings → Secrets and variables → Actions**.
+
 ### Deploy
 
-`.github/workflows/deploy.yml` tests the app, builds a container image, and queues a Vibeship deploy. It does not publish to GitHub Pages. Pushes to `main` and the default branch run it.
+`.github/workflows/deploy.yml` deploys to **Vibeship** (not GitHub Pages):
 
-The container listens on port 3000 on all interfaces, and `GET /health` returns 200 when the site is present. Saves stay in the browser, so the app needs no environment variables and does not write to disk.
+1. It runs `npm ci` and `npm test`. Pull requests stop here.
+2. It builds the Docker image (`linux/amd64`) and pushes it to `api.repoflow.io/hiranyeyg-6713/vibes/sturdy-guide`, tagged `:latest` and `:<commit sha>`.
+3. It calls the Vibeship webhook with that exact image digest. Vibeship pulls the image and health-checks it. Traffic only switches to the new version once it is healthy; otherwise the previous version keeps serving.
 
-The image is `api.repoflow.io/hiranyeyg-6713/vibes/sturdy-guide`, tagged `:latest` and `:<commit sha>`. Actions needs the secrets `REPOFLOW_USERNAME`, `REPOFLOW_PASSWORD`, and `WEBHOOK_URL`.
+The workflow runs on every push to `main` or `claude/jolly-galileo-03dgpb`, and can also be started by hand (**Run workflow**). One deploy runs at a time; later pushes queue behind it.
 
-The app is a PWA, so you can "Add to Home Screen" for a full-screen, offline-capable install.
+To run the production container locally:
+
+```bash
+docker build -t hexbound .
+docker run --rm -p 3000:3000 hexbound   # http://localhost:3000, health check at /health
+```
+
+Without Docker, run `npm run build && node scripts/serve.mjs`.
+
+The container serves `dist/` on port 3000 on all interfaces. `GET /health` returns 200 once the site is present. Nothing is written to disk.
+
+The app is a PWA, so players can **Add to Home Screen** for a full-screen, offline-capable install.
 
 ## Architecture
 
