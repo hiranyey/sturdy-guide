@@ -2,6 +2,7 @@
 // party member, three branches of four talents, tap a talent to read it and learn it.
 import { h, Sheet, toast, bar, vibrate } from './dom';
 import { heroPortraitEl } from './art/heroes';
+import { itemArt } from './art/items';
 import { sfx } from './audio';
 import { CLASSES, armorClass, attackBonus, fmtMod, mod, profBonus, itemDesc } from '../core/rules';
 import {
@@ -162,7 +163,9 @@ export function companionStats(n: NPC) {
   return h('div', { class: 'comp-stats' },
     h('div', { class: 'stat-grid' }, ...STATS.map((st) => h('div', { class: `stat ${cls.prof.includes(st) ? 'prof' : ''}` },
       h('small', null, st.toUpperCase()), h('b', null, fmtMod(mod(hero.stats[st]))), h('span', null, String(hero.stats[st]))))),
-    h('p', { class: 'muted small' }, `🗡️ ${hero.weapon.name} (${itemDesc(hero.weapon)}) · 🛡️ ${hero.armor.name} (${itemDesc(hero.armor)})${hero.charm ? ` · 💍 ${hero.charm.name}` : ''} · PROF ${fmtMod(profBonus(hero.level))}`),
+    h('div', { class: 'comp-gear' }, ...[hero.weapon, hero.armor, hero.charm].filter((x): x is NonNullable<typeof x> => !!x).map((it) =>
+      h('div', { class: 'cg' }, h('span', { class: 'cg-ico', html: itemArt(it) }), h('span', null, h('b', null, it.name), h('small', null, itemDesc(it)))))),
+    h('p', { class: 'muted small' }, `Proficiency ${fmtMod(profBonus(hero.level))}`),
   );
 }
 

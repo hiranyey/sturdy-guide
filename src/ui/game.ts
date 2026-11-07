@@ -11,6 +11,8 @@ import { sfx } from './audio';
 import { portraitEl } from './portrait';
 import { heroPortraitEl } from './art/heroes';
 import { foeArt } from './art/foes';
+import { sceneArt, combatBackdrop, type SceneTime } from './art/scenes';
+import { itemArt, potionArt, goldArt } from './art/items';
 import { openSettings } from './settings-sheet';
 import { key, eq, distance, toPixel, compass, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
@@ -112,8 +114,8 @@ export class Game {
           maxed ? bar(1, 1, 'xp', `XP ${p.xp} · MAX`) : bar(p.xp - prev, xpForNext(p.level) - prev, 'xp', `XP ${p.xp}/${xpForNext(p.level)}`),
         ),
         h('div', { class: 'hud-res' },
-          h('span', { title: 'Gold' }, '🪙', h('b', null, String(p.gold))),
-          h('span', { title: 'Potions' }, '🧪', h('b', null, String(p.potions))),
+          h('span', { title: 'Gold' }, h('i', { class: 'res-ico', html: goldArt() }), h('b', null, String(p.gold))),
+          h('span', { title: 'Potions' }, h('i', { class: 'res-ico', html: potionArt() }), h('b', null, String(p.potions))),
           p.inspiration ? h('span', { class: 'insp', title: 'Inspiration: spend for advantage' }, '✨') : null,
         ),
       ),
@@ -226,6 +228,20 @@ export class Game {
       lm && mem.lm ? h('div', { class: 'pv-lore' }, LANDMARKS[lm].lore[0]) : null);
   }
 
+  // ================= Scene art =================
+  /** The day darkens as torches burn: day, then dusk, then night. */
+  private timeOfDay(): SceneTime {
+    const f = this.s.stamina / Math.max(1, this.s.maxStamina);
+    return f > 0.5 ? 'day' : f > 0.2 ? 'dusk' : 'night';
+  }
+
+  /** Illustrated banner for the top of a parchment card. */
+  private sceneBanner(hx: Hex, poi?: PoiKind | 'wild' | 'quest', landmark?: string, time = this.timeOfDay(), biome = biomeAt(hx, this.s.seed)) {
+    const s = this.s;
+    const art = sceneArt({ biome, poi, landmark, seed: hashString(`${s.seed}:${key(hx)}`), time, omen: s.omen });
+    return h('div', { class: 'ev-scene', 'aria-hidden': 'true', html: art });
+  }
+
   // ================= Session flow =================
   async begin(isNew: boolean) {
     if (isNew) {
@@ -272,9 +288,10 @@ export class Game {
   }
 
   private async intro() {
-    const m = modal('intro');
+    const m = modal('intro has-scene');
     const text = h('p', { class: 'intro-text' });
     m.card.append(
+      this.sceneBanner(this.s.pos, 'start', undefined, 'dusk'),
       h('div', { class: 'eyebrow' }, 'A new tale begins'),
       h('h1', { class: 'intro-title' }, this.s.world.name),
       text,
@@ -590,7 +607,9 @@ export class Game {
     const sheet = new Sheet('event');
     const lmDef = ctx.landmark ? LANDMARKS[ctx.landmark as LandmarkKind] : null;
     const kindLabel = `${lmDef ? `${lmDef.icon} ${lmDef.name}` : POI_LABEL[ctx.poi] ?? 'Encounter'} · ${ctx.regionName}`;
-    sheet.set(h('div', { class: 'parchment loading-card' },
+    const banner = this.sceneBanner(ctx.hex, ctx.poi, ctx.landmark, undefined, ctx.biome);
+    sheet.set(h('div', { class: 'parchment loading-card has-scene' },
+      banner,
       h('div', { class: 'ev-kind' }, kindLabel),
       h('div', { class: 'spin-die', html: d20Svg('?') }),
       h('p', { class: 'muted center' }, aiEnabled() ? 'The Dungeon Master weaves fate…' : 'The mists part…'),
@@ -599,7 +618,7 @@ export class Game {
     // Remember the open event so closing the app mid-choice brings it back.
     s.pending = { ctx, ev };
     save(s);
-    await this.showEvent(sheet, ev, ctx, kindLabel);
+    await this.showEvent(sheet, ev, ctx, kindLabel, banner);
     await sheet.done;
     if (s.pending?.ev === ev) s.pending = null;
     save(s);
@@ -607,7 +626,7 @@ export class Game {
     this.persist();
   }
 
-  private async showEvent(sheet: Sheet, ev: GameEvent, ctx: EventContext, kindLabel: string) {
+  private async showEvent(sheet: Sheet, ev: GameEvent, ctx: EventContext, kindLabel: string, banner?: HTMLElement) {
     const s = this.s;
     const text = h('p', { class: 'ev-text' });
     const choicesEl = h('div', { class: 'choices' });
@@ -619,7 +638,8 @@ export class Game {
               return known ? h('span', { class: 'aff' }, affinityLabel(known.affinity)) : null;
             })()))
       : null;
-    const card = h('div', { class: 'parchment' },
+    const card = h('div', { class: 'parchment has-scene' },
+      banner ?? this.sceneBanner(ctx.hex, ctx.poi, ctx.landmark, undefined, ctx.biome),
       h('div', { class: 'ev-kind' }, kindLabel, h('span', { class: 'tier' }, '☠'.repeat(ctx.tier))),
       h('h2', { class: 'ev-title' }, ev.title),
       npcEl,
@@ -882,6 +902,8 @@ export class Game {
         return el;
       }));
       abilRow.appendChild(inspBtn);
+      // The backdrop lives in the panel, behind the scrolling body.
+      sheet.body.parentElement!.prepend(h('div', { class: 'combat-backdrop', 'aria-hidden': 'true', html: combatBackdrop({ biome: biomeAt(s.pos, s.seed), seed: hashString(`${s.seed}:${key(s.pos)}`), time: this.timeOfDay() }) }));
       sheet.set(h('div', { class: 'combat-wrap' }, foeCard, intentEl, tray.el, logEl, partyRow, abilRow, actionsEl));
 
       const refresh = () => {
@@ -1104,8 +1126,9 @@ export class Game {
     this.persist();
     sfx.level();
     vibrate([60, 40, 60, 40, 200]);
-    const m = modal('quest-done');
+    const m = modal('quest-done has-scene');
     m.card.append(
+      this.sceneBanner(ctx.hex, 'quest', undefined, 'dusk'),
       h('div', { class: 'eyebrow' }, viaCheck ? 'Quest complete' : 'Victory — quest complete'),
       h('h2', null, '🏆 ', q.title),
       h('p', null, `${q.place} gives up its secret. Word of your deed will travel.`),
@@ -1201,7 +1224,8 @@ export class Game {
     const tier = tierAt(s.pos);
     const sheet = new Sheet('event', { dismissable: true });
     const cost = 8 + tier * 2;
-    sheet.set(h('div', { class: 'parchment' },
+    sheet.set(h('div', { class: 'parchment has-scene' },
+      this.sceneBanner(s.pos, 'village'),
       h('div', { class: 'ev-kind' }, `Village · ${this.regionName(s.pos)}`),
       h('h2', { class: 'ev-title' }, 'Familiar Rooftops'),
       h('p', { class: 'ev-text' }, 'Dogs bark a greeting. The smell of fresh bread drifts from the inn.'),
@@ -1233,15 +1257,17 @@ export class Game {
     stock.forEach((it) => (it.price = Math.round(it.price * disc)));
     const potionPrice = Math.round((10 + tier * 3) * disc);
     const sheet = new Sheet('event', { dismissable: true });
+    const banner = this.sceneBanner(s.pos, 'village');
     const render = () => {
-      sheet.set(h('div', { class: 'parchment' },
+      sheet.set(h('div', { class: 'parchment has-scene' },
+        banner,
         h('div', { class: 'ev-kind' }, 'Market', h('span', { class: 'gold-badge' }, `🪙 ${p.gold}`)),
         h('h2', { class: 'ev-title' }, 'Wares & Wonders'),
         h('div', { class: 'shop-list' },
-          h('div', { class: 'shop-item' }, h('span', { class: 'si-icon' }, '🧪'), h('div', null, h('b', null, 'Healing Potion'), h('small', null, `Heals 2d4+4 · you have ${p.potions}`)),
+          h('div', { class: 'shop-item' }, h('span', { class: 'si-icon', html: potionArt() }), h('div', null, h('b', null, 'Healing Potion'), h('small', null, `Heals 2d4+4 · you have ${p.potions}`)),
             h('button', { class: 'buy', disabled: p.gold < potionPrice || p.potions >= 8, onclick: () => { p.gold -= potionPrice; p.potions++; track(s).buys++; sfx.coin(); this.persist(); render(); } }, `${potionPrice}g`)),
           ...stock.map((it) => h('div', { class: `shop-item ${it.sold ? 'sold' : ''}` },
-            h('span', { class: 'si-icon' }, it.slot === 'weapon' ? '🗡️' : it.slot === 'armor' ? '🛡️' : '💍'),
+            itemIcon(it),
             h('div', null, h('b', null, it.name), h('small', null, `${itemDesc(it)} · ${compareTo(p, it)}`)),
             h('button', { class: 'buy', disabled: it.sold || p.gold < it.price, onclick: () => {
               p.gold -= it.price; it.sold = true;
@@ -1255,7 +1281,7 @@ export class Game {
         ),
         p.bag.length ? h('div', { class: 'ev-kind' }, 'Sell from your bag') : null,
         h('div', { class: 'shop-list' }, ...p.bag.map((it) => h('div', { class: 'shop-item' },
-          h('span', { class: 'si-icon' }, it.slot === 'weapon' ? '🗡️' : it.slot === 'armor' ? '🛡️' : '💍'),
+          itemIcon(it),
           h('div', null, h('b', null, it.name), h('small', null, itemDesc(it))),
           h('button', { class: 'buy sell', onclick: () => { p.bag = p.bag.filter((x) => x.id !== it.id); p.gold += sellValue(it); sfx.coin(); this.persist(); render(); } }, `+${sellValue(it)}g`)))),
         h('button', { class: 'btn btn-primary wide', onclick: () => sheet.close() }, 'Done'),
@@ -1349,7 +1375,7 @@ export class Game {
     const sheet = new Sheet('panel', { dismissable: true });
     const render = () => {
       const allies = party(s).filter((n) => n.hero);
-      const slot = (label: string, it: Item | null, icon: string) => h('div', { class: 'gear' }, h('span', { class: 'si-icon' }, icon),
+      const slot = (label: string, it: Item | null, icon: string) => h('div', { class: 'gear' }, it ? itemIcon(it) : h('span', { class: 'si-icon empty' }, icon),
         h('div', null, h('small', null, label), h('b', null, it ? it.name : '—'), it ? h('small', null, itemDesc(it)) : null));
       const ph = potionHeal(s);
       sheet.set(
@@ -1365,7 +1391,7 @@ export class Game {
         abilityChips(p),
         p.asi ? h('button', { class: 'btn btn-primary wide', onclick: async () => { sheet.close(); await this.pendingGrowth(); } }, '⬆ Raise a stat (+2)') : null,
         h('div', { class: 'gear-list' }, slot('Weapon', p.weapon, '🗡️'), slot('Armor', p.armor, '🛡️'), slot('Charm', p.charm, '💍')),
-        h('div', { class: 'shop-item' }, h('span', { class: 'si-icon' }, '🧪'), h('div', null, h('b', null, `Potions × ${p.potions}`), h('small', null, `Heal 2d4+${ph.bonus}`)),
+        h('div', { class: 'shop-item' }, h('span', { class: 'si-icon', html: potionArt() }), h('div', null, h('b', null, `Potions × ${p.potions}`), h('small', null, `Heal 2d4+${ph.bonus}`)),
           h('button', { class: 'buy', disabled: !p.potions || p.hp >= p.maxHp, onclick: () => {
             p.potions--;
             const amt = heal(p, rollDice(ph.n, ph.sides).reduce((a, b) => a + b, 0) + ph.bonus);
@@ -1376,7 +1402,7 @@ export class Game {
         p.inspiration ? h('div', { class: 'gift' }, '✨ You have Inspiration — spend it on any roll for advantage.') : null,
         h('h3', null, `Bag (${p.bag.length}/8)`),
         p.bag.length ? null : h('p', { class: 'muted small' }, 'Empty. Better loot is equipped automatically.'),
-        ...p.bag.map((it) => h('div', { class: 'shop-item bag-item' }, h('span', { class: 'si-icon' }, it.slot === 'weapon' ? '🗡️' : it.slot === 'armor' ? '🛡️' : '💍'),
+        ...p.bag.map((it) => h('div', { class: 'shop-item bag-item' }, itemIcon(it),
           h('div', null, h('b', null, it.name), h('small', null, `${itemDesc(it)} · ${compareTo(p, it)}`)),
           h('div', { class: 'bag-btns' },
             h('button', { class: 'buy', onclick: () => { equip(p, it.id); sfx.tap(); this.persist(); render(); } }, 'Equip'),
@@ -1493,6 +1519,11 @@ function giveItem(p: GameState['player'], to: Hero, id: string) {
   if (it.slot === 'weapon') to.weapon = it;
   else if (it.slot === 'armor') to.armor = it;
   else to.charm = it;
+}
+
+/** Illustrated icon for a piece of gear. */
+function itemIcon(it: Item) {
+  return h('span', { class: 'si-icon', html: itemArt(it) });
 }
 
 function compareTo(p: Hero, it: Item) {

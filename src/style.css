@@ -692,3 +692,33 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
 .choice-foe { flex: none; width: 34px; height: 34px; margin: -4px 8px -4px -4px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #3a2f55, #15121f); box-shadow: 0 0 0 1.5px rgba(233,64,87,0.6); line-height: 0; }
 .choice-foe svg { width: 100%; height: 100%; }
 .choice .choice-foe + .clabel { flex: 1; }
+/* ---------- Scene art ---------- */
+.ev-scene { position: relative; margin: -14px -14px 10px; height: 128px; border-radius: 16px 16px 0 0; overflow: hidden; line-height: 0; }
+.ev-scene svg { width: 100%; height: 100%; display: block; }
+.ev-scene::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 55%, rgba(244,233,207,0.55) 80%, var(--parch) 100%); pointer-events: none; }
+.parchment.has-scene::before { top: 120px; }
+.parchment.has-scene > .ev-kind { margin-top: -18px; position: relative; }
+.modal-card.has-scene { padding-top: 0; overflow-x: hidden; }
+.modal-card.has-scene .ev-scene { margin: 0 -20px 10px; border-radius: 18px 18px 0 0; height: 140px; }
+.modal-card.has-scene .ev-scene::after { background: linear-gradient(180deg, transparent 50%, var(--parch) 100%); }
+.combat-backdrop { position: absolute; inset: 0; border-radius: 22px 22px 0 0; overflow: hidden; opacity: 0.38; pointer-events: none; line-height: 0; }
+.combat-backdrop svg { width: 100%; height: 46%; display: block; }
+.combat-backdrop::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(19,22,43,0) 15%, rgba(19,22,43,0.85) 46%, #13162b 60%); }
+.sheet-panel > .sheet-body { position: relative; z-index: 1; }
+.sheet-panel > .sheet-grip { position: relative; z-index: 1; }
+@media (max-height: 620px) { .ev-scene { height: 96px; } .parchment.has-scene::before { top: 88px; } }
+/* item icons */
+.si-icon svg { width: 40px; height: 40px; display: block; margin: 0 auto; }
+.si-icon { width: 42px; line-height: 0; }
+.si-icon.empty { line-height: normal; opacity: 0.35; filter: grayscale(1); }
+.res-ico { display: inline-block; width: 20px; height: 20px; vertical-align: -5px; line-height: 0; }
+.res-ico svg { width: 100%; height: 100%; }
+.comp-gear { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.cg { display: flex; align-items: center; gap: 8px; }
+.cg span:last-child { display: flex; flex-direction: column; }
+.cg small { color: var(--muted); }
+.cg-ico { width: 34px; height: 34px; line-height: 0; flex: none; }
+.cg-ico svg { width: 100%; height: 100%; }
+.shop-list + .ev-kind { margin-top: 14px; }
+.combat-backdrop { opacity: 0.3; }
+.combat-backdrop svg { filter: saturate(0.8); }
