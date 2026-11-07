@@ -22,7 +22,7 @@ import { itemArt, potionArt, goldArt } from './art/items';
 import { openSettings } from './settings-sheet';
 import { key, eq, distance, toPixel, compass, spiral, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
-import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen } from '../core/state';
+import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen, addTurn } from '../core/state';
 import {
   CLASSES, armorClass, attackBonus, fmtMod, mod, xpForNext, XP_LEVELS, heal, randomItem, itemDesc,
   equip, sellValue, profBonus, rollDice, gainXp, successChance, raiseStat, type D20Roll,
@@ -40,7 +40,7 @@ import { aiEnabled } from '../ai/settings';
 import { Foresight, prune, type Want } from '../ai/foresight';
 import { interpretAction, isOpenMoment, MAX_ACTION, MAX_TRIES } from '../ai/freeform';
 import { STATS, STAT_NAMES } from '../core/types';
-import type { ClassId, Choice, EnemySpec, EventContext, GameEvent, GameState, Hero, Item, PoiKind, Stat, NPC } from '../core/types';
+import type { ClassId, Choice, EnemySpec, EventContext, GameEvent, GameState, Hero, Item, PoiKind, Stat, NPC, Turn } from '../core/types';
 
 const POI_LABEL: Record<string, string> = {
   village: 'Village', ruin: 'Ruins', cave: 'Cave', shrine: 'Shrine', camp: 'Camp', tower: 'Tower',
@@ -768,7 +768,7 @@ export class Game {
     }
     if (isOpenMoment(ev, ctx)) {
       choicesEl.appendChild(this.writeYourOwn(sheet, card, choicesEl, ev, ctx));
-      hint('freeform', 'A turning point! Tap ✍️ to write your own action: the Dungeon Master sets the roll.', 'top');
+      hint('freeform', 'A turning point! Tap ✍️ to write your own action: the Dungeon Master sets the roll.', 'top', true);
     }
   }
 
@@ -930,6 +930,11 @@ export class Game {
       const result = await this.combat(spec, ctx.tier, isQuest, ev.text.length < 160 ? ev.text : `${spec.name} attacks!`,
         { quest: isQuest ? ctx : undefined, tileKey: ctx.poi !== 'wild' && !isQuest ? k : undefined });
       this.afterCombatLog(spec, result, ev.title);
+      if (c.custom && result !== 'down') {
+        const t = this.recordTurn(ev, c, ctx, result !== 'flee', null);
+        toast(`⚡ Turning point: ${t.title}`, 'gold', 3500);
+        this.persist();
+      }
       if (result === 'win' || result === 'friend') {
         markDone();
         if (isQuest) await this.completeQuest(ctx);
@@ -980,9 +985,11 @@ export class Game {
       s.flags.push(outcome.flag);
       if (s.flags.length > 20) s.flags.shift();
     }
+    // The hero's own idea at a special moment changes the story, whichever way the die fell.
+    const turn = c.custom ? this.recordTurn(ev, c, ctx, roll.success, outcome.turn) : null;
     this.persist();
     const rollLine = `🎲 ${roll.kept}${fmtMod(roll.bonus)} = ${roll.total} vs DC ${roll.dc}`;
-    await this.outcomeBlock(card, choicesEl, outcome.text, effects.lines, roll.success, sheet, rollLine, roll.crit, roll.fumble, effects);
+    await this.outcomeBlock(card, choicesEl, outcome.text, effects.lines, roll.success, sheet, rollLine, roll.crit, roll.fumble, effects, turn);
     if (effects.levels) await this.levelUp(effects.levels);
     if (isQuest && roll.success) {
       await sheet.done;
@@ -1003,7 +1010,7 @@ export class Game {
     return genOutcome(this.s, ev, c, { success, crit: false, fumble: false, effects: lines }, true);
   }
 
-  private async outcomeBlock(_card: HTMLElement, choicesEl: HTMLElement, text: string, effects: string[], ok: boolean, sheet: Sheet, rollLine?: string, crit = false, fumble = false, fx?: Effects) {
+  private async outcomeBlock(_card: HTMLElement, choicesEl: HTMLElement, text: string, effects: string[], ok: boolean, sheet: Sheet, rollLine?: string, crit = false, fumble = false, fx?: Effects, turn?: Turn | null) {
     const t = h('p', { class: 'ev-text outcome' });
     const chips = h('div', { class: 'chips' }, ...effects.map((e) => h('span', { class: `chip ${/^-|♥ -/.test(e) ? 'bad' : 'good'}` }, e)));
     const actions = h('div', { class: 'choices' });
@@ -1017,6 +1024,14 @@ export class Game {
     announce(`${text} ${effects.join(', ')}`);
     await typewrite(t, text, 2);
     const s = this.s;
+    if (turn) {
+      const tc = h('div', { class: `turn-card ${turn.good ? 'good' : 'bad'}` },
+        h('div', { class: 'turn-eyebrow' }, '⚡ Turning point'), h('b', null, turn.title), h('p', null, turn.text));
+      chips.after(tc);
+      sfx.discover();
+      vibrate([20, 40, 60]);
+      announce(`Turning point: ${turn.title}. ${turn.text}`);
+    }
     if (fx?.recruit) {
       const npc = fx.recruit;
       actions.append(
@@ -1032,6 +1047,22 @@ export class Game {
     } else {
       actions.append(h('button', { class: 'btn btn-primary wide', onclick: () => sheet.close() }, 'Continue'));
     }
+  }
+
+  /** Write down a turning point: the AI's account of what changed, or a plain one without AI. */
+  private recordTurn(ev: GameEvent, c: Choice, ctx: EventContext, good: boolean, spec: { title: string; text: string } | null | undefined): Turn {
+    const s = this.s;
+    const idea = (c.custom ?? c.label).replace(/[.!]+$/, '');
+    const t: Turn = {
+      day: s.day, where: ctx.regionName, good, at: Date.now(),
+      title: spec?.title || ev.title,
+      text: spec?.text || (good
+        ? `${s.player.name} chose to ${idea.charAt(0).toLowerCase()}${idea.slice(1)}, and ${ctx.regionName} will not forget it.`
+        : `${s.player.name}'s gamble to ${idea.charAt(0).toLowerCase()}${idea.slice(1)} went wrong; ${ev.npc?.name ?? 'the land'} remembers.`),
+    };
+    addTurn(s, t);
+    log(s, `turned the tale at ${ev.title}: ${t.title}`, 'event');
+    return t;
   }
 
   /** Someone joins: they become a full party member at the hero's level. */
@@ -1753,6 +1784,9 @@ export class Game {
       today.length ? h('ul', { class: 'mem' }, ...today.slice(-8).map((l) => h('li', null, `${s.player.name} ${l.text}`))) : null,
       s.chapters.length ? h('h3', null, 'Chapters') : null,
       ...s.chapters.slice().reverse().map((c) => h('div', { class: 'chap' }, h('b', null, `Day ${c.day}`), h('p', null, c.recap))),
+      s.turns?.length ? h('h3', null, '⚡ Turning points') : null,
+      ...(s.turns ?? []).slice().reverse().map((t) => h('div', { class: `turn-card ${t.good ? 'good' : 'bad'}` },
+        h('div', { class: 'turn-eyebrow' }, `Day ${t.day} · ${t.where}`), h('b', null, t.title), h('p', null, t.text))),
       s.flags.length ? h('h3', null, 'Known truths') : null,
       s.flags.length ? h('ul', { class: 'mem' }, ...s.flags.slice(-10).map((f) => h('li', null, f))) : null,
       h('div', { class: 'chapter-stats' },

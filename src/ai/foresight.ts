@@ -49,6 +49,8 @@ const npcByName = (s: GameState, name: string) => Object.values(s.npcs).find((n)
 export function fits(f: Foreseen, s: GameState, ctx: EventContext): boolean {
   if (s.day - f.day > STALE_DAYS) return false;
   if (ctx.poi === 'quest' && f.quest !== s.quest?.title) return false;
+  // written before the hero changed this region's story
+  if ((s.turns ?? []).some((t) => t.where === ctx.regionName && (t.at ?? 0) > (f.written ?? 0))) return false;
   // a rainy scene shouldn't play under a clear sky
   if (f.weather && f.weather !== weatherAt(s.seed, s.day, ctx.hex)) return false;
   const returning = f.ctx.returningNpc;
@@ -210,7 +212,7 @@ export class Foresight {
     }
     const f: Foreseen = {
       ctx, ev, day: s.day, party: party(s).map((n) => n.name), quest: ctx.poi === 'quest' ? s.quest?.title : undefined,
-      weather: weatherAt(s.seed, s.day, ctx.hex),
+      weather: weatherAt(s.seed, s.day, ctx.hex), written: Date.now(),
     };
     const st = store(s);
     if (slot.startsWith('wild:')) toPool(st, f);

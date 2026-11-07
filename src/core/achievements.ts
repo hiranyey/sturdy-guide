@@ -34,6 +34,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'world-walker', icon: '🗺️', name: 'World Walker', desc: 'Explore 300 hexes.', check: (s) => s.stats.explored >= 300, progress: (s) => at(s.stats.explored, 300) },
   { id: 'chapter-one', icon: '🏕️', name: 'Chapter One', desc: 'Make camp and finish your first day.', check: (s) => s.chapters.length >= 1 },
   { id: 'week', icon: '📅', name: 'A Week in the Wilds', desc: 'Reach day 7.', check: (s) => s.day >= 7, progress: (s) => at(s.day, 7) },
+  { id: 'fate-weaver', icon: '⚡', name: 'Fate-Weaver', desc: 'Change the story with 3 turning points of your own.', check: (s) => (s.turns?.length ?? 0) >= 3, progress: (s) => at(s.turns?.length ?? 0, 3) },
   { id: 'nat20', icon: '🎲', name: 'Natural 20', desc: 'Roll your first critical success.', check: (s) => s.stats.crits >= 1 },
   { id: 'lucky', icon: '🍀', name: 'Fortune\'s Favourite', desc: 'Roll 10 natural 20s.', check: (s) => s.stats.crits >= 10, progress: (s) => at(s.stats.crits, 10) },
   { id: 'snake-eyes', icon: '🐍', name: 'Snake Eyes', desc: 'Roll a natural 1. It happens to the best of us.', check: (s) => s.stats.fumbles >= 1 },

@@ -79,6 +79,13 @@ describe('foresight', () => {
     expect(fits(seen(s, base, ev('Dup', { npc: { name: 'Mira', role: 'smith', look: '', personality: '' } })), s, base)).toBe(false);
     expect(fits(seen(s, base, ev('Gone', { text: 'Bram grins at the ruin.' }), { party: ['Bram'] }), s, base)).toBe(false);
     expect(fits(seen(s, base, ev('Fine')), s, base)).toBe(true);
+    // a turning point in that region after it was written makes it stale; elsewhere it doesn't matter
+    const written = seen(s, base, ev('Before'), { written: 1000 });
+    s.turns = [{ day: s.day, title: 'Bridge burned', text: 'The bridge is gone.', where: 'Far Hills', good: true, at: 2000 }];
+    expect(fits(written, s, base)).toBe(true);
+    s.turns.push({ day: s.day, title: 'Troll pact', text: 'Trolls are friends now.', where: base.regionName, good: true, at: 3000 });
+    expect(fits(written, s, base)).toBe(false);
+    expect(fits(seen(s, base, ev('After'), { written: 4000 }), s, base)).toBe(true);
     s.quest = { title: 'New quest' } as GameState['quest'];
     const q = ctx({ poi: 'quest' });
     expect(fits(seen(s, q, ev('Climax'), { quest: 'Old quest' }), s, q)).toBe(false);

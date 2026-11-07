@@ -9,7 +9,7 @@ export type HintId = 'walk' | 'beacon' | 'torches' | 'inspect' | 'growth' | 'wea
 let seen: Record<string, 1> = (() => {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') as Record<string, 1>; } catch { return {}; }
 })();
-const queue: { id: HintId; text: string; at: 'top' | 'bottom' }[] = [];
+const queue: { id: HintId; text: string; at: 'top' | 'bottom'; over: boolean }[] = [];
 let showing: HTMLElement | null = null;
 
 const remember = () => { try { localStorage.setItem(KEY, JSON.stringify(seen)); } catch { /* private mode */ } };
@@ -17,12 +17,15 @@ const remember = () => { try { localStorage.setItem(KEY, JSON.stringify(seen)); 
 /** Has this tip been shown on this device? */
 export const hintSeen = (id: HintId) => !!seen[id];
 
-/** Show a tip once ever (per device). `at` places it under the HUD or above the dock. */
-export function hint(id: HintId, text: string, at: 'top' | 'bottom' = 'bottom') {
+/**
+ * Show a tip once ever (per device). `at` places it under the HUD or above the
+ * dock; `over` lifts it above open sheets (for tips about what's in a sheet).
+ */
+export function hint(id: HintId, text: string, at: 'top' | 'bottom' = 'bottom', over = false) {
   if (seen[id] || queue.some((q) => q.id === id)) return;
   seen[id] = 1;
   remember();
-  queue.push({ id, text, at });
+  queue.push({ id, text, at, over });
   if (!showing) next();
 }
 
@@ -44,7 +47,7 @@ export function resetHints() {
 function next() {
   const q = queue.shift();
   if (!q) return;
-  const el = h('div', { class: `hint-bubble at-${q.at}`, role: 'status', 'data-id': q.id, onclick: () => dismissHint() },
+  const el = h('div', { class: `hint-bubble at-${q.at}${q.over ? ' over' : ''}`, role: 'status', 'data-id': q.id, onclick: () => dismissHint() },
     h('span', { class: 'hint-ico' }, '💡'), h('span', { class: 'hint-text' }, q.text), h('span', { class: 'hint-ok' }, 'Got it'));
   document.body.appendChild(el);
   showing = el;

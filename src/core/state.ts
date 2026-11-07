@@ -3,7 +3,7 @@ import { newPlayer } from './rules';
 import { visionRadius } from './world';
 import { omenFor } from './content';
 import { partyMods, migrateSave } from './companions';
-import type { ClassId, GameState, LogEntry, NPC, NpcSpec, Tone } from './types';
+import type { ClassId, GameState, LogEntry, NPC, NpcSpec, Tone, Turn } from './types';
 
 const SAVE_KEY = 'hexbound.save.v1';
 
@@ -79,6 +79,15 @@ export function log(s: GameState, text: string, kind: LogEntry['kind'] = 'info')
   s.log.push({ day: s.day, text, kind });
   if (s.log.length > 80) s.log.splice(0, s.log.length - 80);
 }
+
+/** Remember a turning point (the newest dozen are kept). */
+export function addTurn(s: GameState, t: Turn) {
+  (s.turns ??= []).push(t);
+  if (s.turns.length > 12) s.turns.splice(0, s.turns.length - 12);
+}
+
+/** Turning points that happened in a region, newest last. */
+export const turnsIn = (s: GameState, region: string) => (s.turns ?? []).filter((t) => t.where === region);
 
 export function chapterLog(s: GameState) {
   return s.log.filter((l) => l.day === s.day);

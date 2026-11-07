@@ -3,7 +3,7 @@
 import { chatJson, type ChatMessage } from './openrouter';
 import { aiEnabled } from './settings';
 import { CLASSES } from '../core/rules';
-import { party, chapterLog } from '../core/state';
+import { party, chapterLog, turnsIn } from '../core/state';
 import { BIOME_INFO } from '../core/world';
 import {
   fallbackEvent, fallbackOutcome, fallbackQuest, regionName, regionBlurb, PREMISES, HOOKS, CAMP_BANTER, KIND_EMOJI,
@@ -45,6 +45,8 @@ function storyContext(s: GameState) {
       ...(n.hero ? { class: CLASSES[n.hero.cls].name, level: n.hero.level, talents: n.hero.talents.map((t) => talent(t)?.name).filter(Boolean) } : {}),
     })),
     recent_events: s.log.slice(-6).map((l) => l.text),
+    // the hero's own choices that changed the world: honour them
+    turning_points: (s.turns ?? []).slice(-5).map((t) => `${t.title}: ${t.text} (${t.where}, day ${t.day})`),
   };
 }
 
@@ -93,6 +95,7 @@ export async function genQuest(s: GameState, targetBiome: Biome, direction: stri
       `Create the hero's next main quest, chapter ${s.questsDone + 1} of their saga. It must grow out of the story so far.
 The destination is ${dist} hexes to the ${direction}, in ${BIOME_INFO[targetBiome].name} terrain.
 Context: ${JSON.stringify(storyContext(s))}
+If a recent turning point opened a new thread, the quest may follow it.
 JSON: {"title": "quest title, 2-5 words", "description": "the goal and why it matters, max 30 words", "place": "name of the destination, 2-4 words"}`, 200);
     return { title: clip(out.title, 40, fb.title), description: clip(out.description, 220, fb.description), place: clip(out.place, 40, fb.place) };
   } catch {
@@ -190,6 +193,7 @@ export async function genEventAi(s: GameState, ctx: EventContext): Promise<GameE
     const raw = await ask<any>(s, `Create the next encounter.
 Location: ${POI_GUIDE[ctx.poi] ?? POI_GUIDE.wild}. Terrain: ${ctx.terrain ?? BIOME_INFO[ctx.biome].name}. Region: ${ctx.regionName}. Danger tier ${ctx.tier}/5.
 Weather: ${WEATHER_INFO[weatherAt(s.seed, s.day, ctx.hex)].prompt}. Unless it's clear, let it colour the scene.
+${turnsIn(s, ctx.regionName).length ? `Turning points the hero caused in this region (the world has changed because of them; let this scene show it where it fits): ${turnsIn(s, ctx.regionName).slice(-3).map((t) => `${t.title}: ${t.text}`).join(' | ')}` : ''}
 ${ctx.landmark ? `The scene is built around a landmark standing here: ${LANDMARKS[ctx.landmark as LandmarkKind].name} — ${LANDMARKS[ctx.landmark as LandmarkKind].lore[0]} Make the landmark central to the encounter and its choices.` : ''}
 ${returning}
 Context: ${JSON.stringify(storyContext(s))}
@@ -209,7 +213,7 @@ Rules: offer genuinely different approaches using DIFFERENT stats; make choices 
 }
 
 // ---------- Outcome ----------
-export interface Outcome { text: string; memory: string | null; flag: string | null }
+export interface Outcome { text: string; memory: string | null; flag: string | null; turn?: { title: string; text: string } | null }
 
 /**
  * Narration for a check's result. With `approx`, it's being written before the
@@ -220,7 +224,7 @@ export async function genOutcome(s: GameState, ev: GameEvent, choice: Choice, re
   const fb: Outcome = { text: fallbackOutcome(choice.reward, result.success, result.crit, result.fumble), memory: null, flag: null };
   if (!aiEnabled()) return fb;
   try {
-    const out = await ask<Outcome>(s, `Narrate the result of the hero's choice.
+    const out = await ask<any>(s, `Narrate the result of the hero's choice.
 Scene: ${JSON.stringify({ title: ev.title, text: ev.text, npc: ev.npc?.name ?? null })}
 Choice: "${choice.custom ?? choice.label}"${choice.custom ? ' (the player\'s own idea: honour its specifics)' : ''} (${choice.stat?.toUpperCase() ?? ''} check vs DC ${choice.dc ?? '-'}).
 Dice result (FINAL, do not contradict): ${result.crit ? 'CRITICAL SUCCESS (natural 20)' : result.fumble ? 'CRITICAL FAILURE (natural 1)' : result.success ? 'SUCCESS' : 'FAILURE'}.
@@ -228,8 +232,10 @@ ${approx
   ? `Likely mechanical effects (exact amounts and items may differ, so mention them only in general terms: no numbers, no item names): ${result.effects.join(', ') || 'none'}.`
   : `Mechanical effects already applied: ${result.effects.join(', ') || 'none'}.`}
 Context: ${JSON.stringify({ story_so_far: s.summary.slice(-300), companions: party(s).map((n) => n.name), weather: WEATHER_INFO[weatherAt(s.seed, s.day, s.pos)].prompt })}
-JSON: {"text": "25-55 words narrating what happens, consistent with the result and effects", "memory": ${ev.npc ? `"what ${ev.npc.name} will remember about this, max 12 words"` : 'null'}, "flag": "a lasting world fact this created, max 10 words, or null"}`, 260);
-    return { text: clip(out.text, 420, fb.text), memory: clip(out.memory, 100) || null, flag: clip(out.flag, 90) || null };
+JSON: {"text": "25-55 words narrating what happens, consistent with the result and effects", "memory": ${ev.npc ? `"what ${ev.npc.name} will remember about this, max 12 words"` : 'null'}, "flag": "a lasting world fact this created, max 10 words, or null"${choice.custom ? `,
+ "turn": {"title": "2-5 words naming this turning point", "consequence": "max 22 words: what is different in the world from now on because of what the hero did (success or failure); something that can matter later"}` : ''}}`, choice.custom ? 340 : 260);
+    const turn = choice.custom && clip(out.turn?.consequence, 160) ? { title: clip(out.turn?.title, 40, ev.title), text: clip(out.turn?.consequence, 160) } : null;
+    return { text: clip(out.text, 420, fb.text), memory: clip(out.memory, 100) || null, flag: clip(out.flag, 90) || null, turn };
   } catch {
     return fb;
   }

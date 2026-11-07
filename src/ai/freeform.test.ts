@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { cleanAction, isOpenMoment, keywordIntent, sanitizeIntent, interpretAction, MAX_ACTION } from './freeform';
 import { sanitizeEvent } from './director';
 import { settings } from './settings';
-import { createGame } from '../core/state';
+import { createGame, addTurn, turnsIn } from '../core/state';
+import { ACHIEVEMENTS, track } from '../core/achievements';
 import type { EventContext, GameEvent, GameState } from '../core/types';
 
 const ctx = (over: Partial<EventContext> = {}): EventContext => ({ hex: { q: 1, r: 1 }, biome: 'forest', poi: 'ruin', tier: 2, regionName: 'Elder Wood', ...over });
@@ -67,5 +68,15 @@ describe('write your own action', () => {
     expect(viaApi.choice?.stat).toBe('cha');
     expect(viaApi.spend.potions).toBe(1);
     expect((await interpretAction(s, ev(), ctx(), '   ')).refuse).toBeTruthy();
+  });
+
+  it('remembers turning points: newest dozen, by region, and counts toward Fate-Weaver', () => {
+    const fate = ACHIEVEMENTS.find((a) => a.id === 'fate-weaver')!;
+    expect(fate.check(s, track(s))).toBe(false);
+    for (let i = 0; i < 15; i++) addTurn(s, { day: i, title: `T${i}`, text: 'changed', where: i % 2 ? 'Elder Wood' : 'Salt Coast', good: true });
+    expect(s.turns).toHaveLength(12);
+    expect(s.turns![0].title).toBe('T3');
+    expect(turnsIn(s, 'Elder Wood').every((t) => t.where === 'Elder Wood')).toBe(true);
+    expect(fate.check(s, track(s))).toBe(true);
   });
 });

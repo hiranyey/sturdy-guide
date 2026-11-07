@@ -140,6 +140,8 @@ export interface GameState {
   pending?: { ctx: EventContext; ev: GameEvent } | null;
   /** a fight that was in progress when the app closed; restarted on resume */
   pendingFight?: PendingFight | null;
+  /** turning points: lasting consequences of the hero's own ideas at special moments */
+  turns?: Turn[];
   /** encounters written ahead of time for nearby tiles, plus spares to reuse (src/ai/foresight.ts) */
   foresight?: ForesightStore;
   stats: { kills: number; friends: number; explored: number; crits: number; fumbles: number; chapterStartGold: number; chapterKills: number; chapterExplored: number };
@@ -175,6 +177,21 @@ export interface GameEvent {
   open?: boolean;
 }
 
+/** A turning point: something the hero chose to do that changes the story from then on. */
+export interface Turn {
+  day: number;
+  /** 2-5 words, e.g. "The Troll's Bargain" */
+  title: string;
+  /** what is different now */
+  text: string;
+  /** region it happened in */
+  where: string;
+  /** did the hero's idea work? */
+  good: boolean;
+  /** when it happened (ms) */
+  at?: number;
+}
+
 /** An encounter the AI wrote before the hero got there. */
 export interface Foreseen {
   ctx: EventContext;
@@ -187,6 +204,8 @@ export interface Foreseen {
   quest?: string;
   /** weather on that tile when it was written (the scene may describe it) */
   weather?: string;
+  /** when it was written (ms), to spot turning points that came after */
+  written?: number;
 }
 
 export interface ForesightStore {
