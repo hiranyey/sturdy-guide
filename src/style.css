@@ -47,7 +47,7 @@ h3 { font-size: 0.95rem; color: var(--gold); margin-top: 1.2em; text-transform: 
 body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hidden; }
 
 /* ---------- HUD ---------- */
-#hud { position: relative; flex: none; padding: calc(var(--safe-t) + 8px) 10px 6px; z-index: 2; }
+#hud { position: relative; flex: none; padding: calc(var(--safe-t) + 18px) 10px 6px; z-index: 2; }
 .hud-row { display: flex; align-items: center; gap: 8px; }
 .hud-row.row2 { margin-top: 6px; justify-content: space-between; }
 .hero-chip { display: flex; align-items: center; gap: 7px; min-width: 0; text-align: left; }
@@ -813,8 +813,8 @@ html, body { background: var(--edge-deep); transition: background-color 1.2s eas
   backdrop-filter: blur(12px) saturate(1.4);
   transition: background-color 1.2s ease, box-shadow 1.2s ease;
 }
-/* Darker right under the status bar so the white clock stays readable; a soft lip below. */
-#hud { background-image: linear-gradient(180deg, rgba(0,0,0,0.42) 0, rgba(0,0,0,0.12) calc(var(--safe-t) + 26px), rgba(0,0,0,0) 100%); border-bottom: 1px solid var(--edge-line); box-shadow: 0 6px 22px rgba(0,0,0,0.3); }
+/* Darker behind the status bar so the white clock stays readable, clearing before the character row. */
+#hud { background-image: linear-gradient(180deg, rgba(0,0,0,0.42) 0, rgba(0,0,0,0.12) var(--safe-t), rgba(0,0,0,0) calc(var(--safe-t) + 14px)); border-bottom: 1px solid var(--edge-line); box-shadow: 0 6px 22px rgba(0,0,0,0.3); }
 #dock { background-image: linear-gradient(0deg, rgba(0,0,0,0.4) 0, rgba(0,0,0,0) 100%); border-top: 1px solid var(--edge-line); box-shadow: 0 -6px 22px rgba(0,0,0,0.3); }
 /* Feather the map into the bars instead of a hard line. */
 #hud::after, #dock::before { content: ''; position: absolute; left: 0; right: 0; height: 22px; pointer-events: none; transition: opacity 1.2s; }
