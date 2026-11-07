@@ -116,3 +116,21 @@ describe('achievements', () => {
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
   });
 });
+
+import { encodeSave, decodeSave } from './savecode';
+describe('save codes', () => {
+  it('round-trips a save and rejects junk', async () => {
+    const s = createGame('Rook', 'mage', 'grim', { name: 'W', hook: 'h' });
+    s.player.gold = 123;
+    s.pending = { ctx: { hex: { q: 1, r: 1 }, biome: 'grass', poi: 'wild', tier: 1, regionName: 'x' }, ev: { title: 't', text: 'x', npc: null, choices: [] } };
+    const code = await encodeSave(s);
+    expect(code.startsWith('HB1.') || code.startsWith('HB0.')).toBe(true);
+    const back = await decodeSave(code);
+    expect(back.player.name).toBe('Rook');
+    expect(back.player.gold).toBe(123);
+    expect(back.seed).toBe(s.seed);
+    expect(back.pending).toBeNull();
+    await expect(decodeSave('hello')).rejects.toThrow(/Hexbound save code/);
+    await expect(decodeSave(code.slice(0, 40))).rejects.toThrow();
+  });
+});

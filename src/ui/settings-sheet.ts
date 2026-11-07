@@ -1,4 +1,6 @@
-import { h, Sheet, toast } from './dom';
+import { h, Sheet, toast, modal } from './dom';
+import { encodeSave, decodeSave } from '../core/savecode';
+import { load, save, lockSaves } from '../core/state';
 import { settings, saveSettings, MODEL_SUGGESTIONS, aiEnabled } from '../ai/settings';
 import { startOAuth, testConnection } from '../ai/openrouter';
 import { wipe } from '../core/state';
@@ -61,6 +63,12 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
       toggle('Reduce motion', settings.reduceMotion, (v) => { settings.reduceMotion = v; applyPrefs(); }),
       !isStandalone() ? h('h3', null, 'App') : null,
       !isStandalone() ? h('button', { class: 'btn wide', onclick: () => offerInstall(true) }, installAvailable() ? '📲 Install Hexbound on this device' : '📲 Add to Home Screen') : null,
+      h('h3', null, 'Save backup'),
+      h('p', { class: 'muted small' }, 'Your journey is saved in this browser. Export a save code to back it up or move it to another phone.'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn', style: 'flex:1', disabled: !load(), onclick: () => exportSave() }, '📤 Export save'),
+        h('button', { class: 'btn', style: 'flex:1', onclick: () => importSave() }, '📥 Import save'),
+      ),
       opts.inGame ? h('h3', null, 'Journey') : null,
       opts.inGame ? h('button', { class: 'btn wide', onclick: () => { sheet.close(); opts.onQuit?.(); } }, '🏠 Save & return to title') : null,
       opts.inGame ? h('button', { class: 'btn btn-danger wide', onclick: () => {
@@ -95,4 +103,64 @@ function toggle(label: string, value: boolean, set: (v: boolean) => void) {
     sfx.tap();
   } });
   return h('label', { class: 'toggle' }, h('span', null, label), input, h('span', { class: 'switch' }));
+}
+
+async function exportSave() {
+  const s = load();
+  if (!s) return toast('No journey to export yet.', 'bad');
+  const code = await encodeSave(s);
+  const m = modal('savecode');
+  const area = h('textarea', { class: 'code-area', readonly: true, rows: 6, spellcheck: false, 'aria-label': 'Your save code' }) as HTMLTextAreaElement;
+  area.value = code;
+  const file = new File([code], `hexbound-${s.player.name.replace(/\W+/g, '_')}-day${s.day}.txt`, { type: 'text/plain' });
+  const url = URL.createObjectURL(file);
+  m.card.append(
+    h('div', { class: 'eyebrow' }, 'Save code'),
+    h('h2', null, `${s.player.name} · Day ${s.day}`),
+    h('p', { class: 'muted small' }, `Keep this code somewhere safe (notes app, email to yourself). Paste it into “Import save” on any device to continue. ${Math.round(code.length / 1024)} KB.`),
+    area,
+    h('button', { class: 'btn btn-primary', onclick: async () => {
+      try { await navigator.clipboard.writeText(code); toast('Save code copied', 'good'); }
+      catch { area.select(); toast('Select all and copy the code', 'info'); }
+    } }, '📋 Copy code'),
+    ...(navigator.share ? [h('button', { class: 'btn', onclick: () => navigator.share({ title: 'Hexbound save', text: code }).catch(() => {}) }, '📤 Share code')] : []),
+    h('a', { class: 'btn', href: url, download: file.name }, '⬇️ Download as file'),
+    h('button', { class: 'btn', onclick: () => { m.close(); setTimeout(() => URL.revokeObjectURL(url), 1000); } }, 'Close'),
+  );
+  area.addEventListener('focus', () => area.select());
+}
+
+function importSave() {
+  const m = modal('savecode');
+  const area = h('textarea', { class: 'code-area', rows: 6, spellcheck: false, placeholder: 'Paste a code starting with HB1.', 'aria-label': 'Paste save code' }) as HTMLTextAreaElement;
+  const err = h('p', { class: 'code-err', role: 'alert' });
+  const fileInput = h('input', { type: 'file', accept: '.txt,text/plain', class: 'sr-only', onchange: async (e: Event) => {
+    const f = (e.target as HTMLInputElement).files?.[0];
+    if (f) area.value = (await f.text()).trim();
+  } }) as HTMLInputElement;
+  m.card.append(
+    h('div', { class: 'eyebrow' }, 'Import save'),
+    h('h2', null, 'Continue a journey'),
+    area,
+    err,
+    h('button', { class: 'btn btn-primary', onclick: async () => {
+      err.textContent = '';
+      try {
+        const incoming = await decodeSave(area.value);
+        const current = load();
+        if (current && !confirm(`Replace ${current.player.name} (day ${current.day}) with ${incoming.player.name} (day ${incoming.day})? The current journey will be lost unless you exported it.`)) return;
+        incoming.lastPlayed = Date.now();
+        save(incoming);
+        lockSaves();
+        toast(`Welcome back, ${incoming.player.name}!`, 'good');
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        err.textContent = (e as Error).message;
+      }
+    } }, '📥 Import'),
+    h('button', { class: 'btn', onclick: () => fileInput.click() }, '📄 Load from file'),
+    fileInput,
+    h('button', { class: 'btn', onclick: () => m.close() }, 'Cancel'),
+  );
+  setTimeout(() => area.focus(), 300);
 }

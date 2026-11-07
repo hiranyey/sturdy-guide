@@ -119,6 +119,10 @@ export interface GameState {
   ach?: Record<string, number>;
   /** counters used by achievements */
   track?: Track;
+  /** an event that was open when the app closed; reopened on resume */
+  pending?: { ctx: EventContext; ev: GameEvent } | null;
+  /** a fight that was in progress when the app closed; restarted on resume */
+  pendingFight?: PendingFight | null;
   stats: { kills: number; friends: number; explored: number; crits: number; fumbles: number; chapterStartGold: number; chapterKills: number; chapterExplored: number };
 }
 
@@ -169,4 +173,15 @@ export interface Track {
   deathSaves: number;
   recruits: number;
   sword: boolean;
+}
+
+export interface PendingFight {
+  spec: EnemySpec;
+  tier: number;
+  boss: boolean;
+  intro: string;
+  /** quest climax context, so winning still completes the quest */
+  quest?: EventContext;
+  /** point of interest to mark done on victory */
+  tileKey?: string;
 }

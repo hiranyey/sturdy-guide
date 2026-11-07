@@ -35,6 +35,7 @@ An **AI Dungeon Master** (any model on [OpenRouter](https://openrouter.ai)) writ
 - **Sound:** synthesized sound effects and optional ambient music whose mood follows the terrain (and changes for combat and camp), each with its own volume slider. *Read story aloud* narrates events and recaps using the device's voice.
 - **Accessibility:** a text size setting (S to XL), a Reduce motion toggle (which follows the OS setting by default), screen-reader labels and live announcements for dice results and outcomes, and difficulty badges marked with ✓ / ≈ / ! as well as colour.
 - **Battery saver:** the map redraws at full frame rate only while something is moving. Otherwise it idles at about 12 fps for ambient effects, or doesn't redraw at all with Reduce motion on.
+- **Never lose progress:** if you close the app mid-event or mid-fight, it reopens exactly there next time. Once the die is thrown the result is saved, so reopening can't be used to re-roll. **Settings → Save backup** exports your whole journey as a compact text code (copy, share or download it) and imports it on any device. Abandoning or importing a journey can't be undone by the page writing the old game back as it reloads.
 - **Portrait-first:** respects safe areas for notches and the Dynamic Island, and phones held sideways see a polite "turn your phone upright" note.
 
 ## Run it

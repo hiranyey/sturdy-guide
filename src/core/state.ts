@@ -38,7 +38,17 @@ export function startDay(s: GameState) {
 
 export const hasOmen = (s: GameState, id: string) => s.omen === id;
 
+/**
+ * Once the save slot has been replaced (import) or deleted (abandon), the page reloads.
+ * Locking stops the outgoing page's save-on-hide from writing the old game back.
+ */
+let locked = false;
+export function lockSaves() {
+  locked = true;
+}
+
 export function save(s: GameState) {
+  if (locked) return;
   s.lastPlayed = Date.now();
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
@@ -59,6 +69,7 @@ export function load(): GameState | null {
 }
 
 export function wipe() {
+  lockSaves();
   localStorage.removeItem(SAVE_KEY);
 }
 

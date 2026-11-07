@@ -226,12 +226,38 @@ export class Game {
     } else {
       await this.recap();
       if (!this.s.quest) await this.ensureQuest(true);
+      await this.resumeInterrupted();
     }
     this.regionCheck(this.s.pos);
     if (this.s.omen) trackSeen(this.s, 'omens', this.s.omen);
     setMood(moodForBiome(biomeAt(this.s.pos, this.s.seed)));
     this.persist();
     if (this.s.stamina <= 0) this.confirmCamp(true);
+  }
+
+  /** Reopen whatever was on screen when the app was closed: a fight, or an event. */
+  private async resumeInterrupted() {
+    const s = this.s;
+    this.busy = true;
+    try {
+      if (s.pendingFight) {
+        const f = s.pendingFight;
+        toast('⚔️ You left mid-fight — it resumes!', 'bad', 3000);
+        const r = await this.combat(f.spec, f.tier, f.boss, f.intro, { quest: f.quest, tileKey: f.tileKey });
+        this.afterCombatLog(f.spec, r);
+        if (r === 'win' || r === 'friend') {
+          if (f.tileKey) (s.tiles[f.tileKey] ||= {}).done = 1;
+          if (f.quest) await this.completeQuest(f.quest);
+        }
+      } else if (s.pending) {
+        toast('📜 Picking up where you left off…', 'info', 2600);
+        await this.runEvent(s.pending.ctx, s.pending.ev);
+      }
+      // Closed the app right after falling in battle: finish the defeat properly.
+      if (s.player.hp <= 0) await this.downed();
+    } finally {
+      this.busy = false;
+    }
   }
 
   private async intro() {
@@ -547,7 +573,7 @@ export class Game {
   }
 
   // ================= Events =================
-  private async runEvent(ctx: EventContext) {
+  private async runEvent(ctx: EventContext, preset?: GameEvent) {
     const s = this.s;
     ctx.terrain ??= terrainName(ctx.hex, s.seed);
     const sheet = new Sheet('event');
@@ -558,9 +584,14 @@ export class Game {
       h('div', { class: 'spin-die', html: d20Svg('?') }),
       h('p', { class: 'muted center' }, aiEnabled() ? 'The Dungeon Master weaves fate…' : 'The mists part…'),
     ));
-    const ev = await genEvent(s, ctx);
+    const ev = preset ?? await genEvent(s, ctx);
+    // Remember the open event so closing the app mid-choice brings it back.
+    s.pending = { ctx, ev };
+    save(s);
     await this.showEvent(sheet, ev, ctx, kindLabel);
     await sheet.done;
+    if (s.pending?.ev === ev) s.pending = null;
+    save(s);
     stopSpeech();
     this.persist();
   }
@@ -679,7 +710,8 @@ export class Game {
     if (c.kind === 'fight') {
       sheet.close();
       const spec: EnemySpec = c.enemy ?? pick(ENEMIES[ctx.biome].length ? ENEMIES[ctx.biome] : ENEMIES.grass);
-      const result = await this.combat(spec, ctx.tier, isQuest, ev.text.length < 160 ? ev.text : `${spec.name} attacks!`);
+      const result = await this.combat(spec, ctx.tier, isQuest, ev.text.length < 160 ? ev.text : `${spec.name} attacks!`,
+        { quest: isQuest ? ctx : undefined, tileKey: ctx.poi !== 'wild' && !isQuest ? k : undefined });
       this.afterCombatLog(spec, result, ev.title);
       if (result === 'win' || result === 'friend') {
         markDone();
@@ -705,6 +737,9 @@ export class Game {
         ? h('button', { class: 'share-btn', onclick: () => shareCard(s, { kind: 'crit', title: `${STAT_NAMES[stat]} check`, subtitle: c.label, total: r.total, dc: r.dc }) }, '📤 Share this moment')
         : null,
       onRoll: (r, usedInsp) => {
+        // The die is cast: closing the app now must not allow a re-roll.
+        s.pending = null;
+        queueMicrotask(() => save(s));
         if (ctx.landmark === 'sword_stone' && stat === 'str' && r.success) track(s).sword = true;
         if (usedInsp) p.inspiration = false;
         fx = applyCheck(s, ev, c, r, ctx.tier, ctx.regionName, isQuest);
@@ -783,9 +818,12 @@ export class Game {
     else log(s, `was beaten by a ${spec.name}${at}`, 'fight');
   }
 
-  private combat(spec: EnemySpec, tier: number, boss: boolean, intro: string): Promise<'win' | 'flee' | 'friend' | 'down'> {
+  private combat(spec: EnemySpec, tier: number, boss: boolean, intro: string, resume: { quest?: EventContext; tileKey?: string } = {}): Promise<'win' | 'flee' | 'friend' | 'down'> {
     return new Promise((resolve) => {
       const s = this.s, p = s.player;
+      s.pending = null;
+      s.pendingFight = { spec, tier, boss, intro, ...resume };
+      save(s);
       const enemy = makeEnemy(spec, tier, boss);
       const cs = startCombat(enemy);
       setMood('combat');
@@ -933,6 +971,9 @@ export class Game {
           logEl.appendChild(h('div', { class: 'chips' }, ...summary.map((x) => h('span', { class: 'chip good' }, x))));
           logEl.scrollTop = logEl.scrollHeight;
         }
+        // The fight is decided: rewards are in, so it must not restart on resume.
+        s.pendingFight = null;
+        save(s);
         const close = async () => {
           sheet.close();
           setMood(moodForBiome(biomeAt(s.pos, s.seed)));

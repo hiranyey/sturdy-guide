@@ -516,3 +516,7 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
 .journal-actions { margin: 4px 0 6px; }
 .journal-actions .btn { flex: 1; font-size: 0.8rem; padding: 9px 8px; }
 .result .share-btn, .roll-result .share-btn { color: var(--gold-hi); margin: 2px auto 8px; display: flex; }
+.code-area { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; padding: 10px; border-radius: 10px; border: 1px solid #c9a768; background: #fff8e6; color: var(--ink); resize: vertical; word-break: break-all; user-select: text; -webkit-user-select: text; margin: 6px 0; }
+.code-err { color: #a8261d; font-size: 0.88rem; min-height: 1em; margin: 2px 0; }
+.modal-card.savecode { display: flex; flex-direction: column; gap: 2px; }
+.modal-card.savecode .btn { width: 100%; text-decoration: none; }
