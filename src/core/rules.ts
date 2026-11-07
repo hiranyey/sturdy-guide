@@ -1,5 +1,6 @@
 import { rand, randInt, pick, type Rand } from './rng';
-import type { ClassId, Item, Player, Stat } from './types';
+import type { ClassId, Hero, Item, Player, Stat } from './types';
+import { modsOf, treeSize, ASI_LEVELS, MAX_LEVEL, type Mods } from './talents';
 
 export const mod = (score: number) => Math.floor((score - 10) / 2);
 export const fmtMod = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
@@ -43,7 +44,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     id: 'mage', name: 'Mage', glyph: '✦', color: '#7b7cf5',
     blurb: 'Arcane sparks and a head full of forbidden footnotes.',
     stats: { str: 8, dex: 13, con: 12, int: 16, wis: 14, cha: 11 },
-    prof: ['int', 'wis'], hitDie: 6, attackStat: 'int',
+    prof: ['int', 'wis'], hitDie: 8, attackStat: 'int',
     ability: { name: 'Thunderwave', desc: 'Unleash 3d8 force damage — no attack roll needed. Once per fight.' },
     weapon: { id: 'w0', name: 'Firebolt Focus', slot: 'weapon', tier: 1, die: 10, plus: 0 },
     armor: { id: 'a0', name: 'Mage Armor', slot: 'armor', tier: 1, plus: 3 },
@@ -54,41 +55,61 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     stats: { str: 9, dex: 14, con: 12, int: 11, wis: 10, cha: 16 },
     prof: ['cha', 'dex'], hitDie: 8, attackStat: 'dex',
     ability: { name: 'Vicious Mockery', desc: 'Insult so cutting it deals 2d6 psychic damage and makes the foe miss its next swing. Once per fight.' },
-    weapon: { id: 'w0', name: 'Rapier', slot: 'weapon', tier: 1, die: 6, plus: 0 },
+    weapon: { id: 'w0', name: 'Rapier', slot: 'weapon', tier: 1, die: 8, plus: 0 },
     armor: { id: 'a0', name: 'Leather Doublet', slot: 'armor', tier: 1, plus: 1 },
   },
 };
 
-export function newPlayer(name: string, cls: ClassId): Player {
+/** A fresh level-1 hero of a class: the player and companions start the same way. */
+export function newHero(cls: ClassId): Hero {
   const def = CLASSES[cls];
   const maxHp = def.hitDie + 4 + mod(def.stats.con) * 2;
   return {
-    name, cls, level: 1, xp: 0, hp: maxHp, maxHp,
-    stats: { ...def.stats }, gold: 15, potions: 2,
-    weapon: { ...def.weapon }, armor: { ...def.armor }, charm: null, bag: [],
-    inspiration: true,
+    cls, level: 1, xp: 0, hp: maxHp, maxHp,
+    stats: { ...def.stats },
+    weapon: { ...def.weapon }, armor: { ...def.armor }, charm: null,
+    talents: [], points: 0, asi: 0,
   };
 }
 
-export function armorClass(p: Player): number {
-  return 10 + Math.min(mod(p.stats.dex), p.cls === 'warrior' ? 2 : 5) + p.armor.plus;
+export function newPlayer(name: string, cls: ClassId): Player {
+  return { ...newHero(cls), name, gold: 15, potions: 2, bag: [], inspiration: true };
 }
 
-export function checkBonus(p: Player, stat: Stat): { total: number; parts: { label: string; value: number }[] } {
-  const parts = [{ label: stat.toUpperCase(), value: mod(p.stats[stat]) }];
-  if (CLASSES[p.cls].prof.includes(stat)) parts.push({ label: 'PROF', value: profBonus(p.level) });
-  if (p.charm && p.charm.stat === stat) parts.push({ label: p.charm.name.split(' ').slice(-1)[0].toUpperCase(), value: p.charm.plus });
+export function armorClass(h: Hero, m: Mods = modsOf(h)): number {
+  return 10 + Math.min(mod(h.stats.dex), h.cls === 'warrior' ? 2 : 5) + h.armor.plus + (m.ac ?? 0);
+}
+
+export interface Helper { name: string; hero: Hero }
+export type Part = { label: string; value: number };
+
+/**
+ * Bonus on an ability check. Companions with a matching talent lend a hand
+ * (their talent bonus shows up as a separate, named part of the roll).
+ */
+export function checkBonus(h: Hero, stat: Stat, helpers: Helper[] = []): { total: number; parts: Part[] } {
+  const parts: Part[] = [{ label: stat.toUpperCase(), value: mod(h.stats[stat]) }];
+  if (CLASSES[h.cls].prof.includes(stat)) parts.push({ label: 'PROF', value: profBonus(h.level) });
+  if (h.charm && h.charm.stat === stat) parts.push({ label: h.charm.name.split(' ').slice(-1)[0].toUpperCase(), value: h.charm.plus });
+  const own = modsOf(h).checks?.[stat];
+  if (own) parts.push({ label: 'TALENT', value: own });
+  for (const x of helpers) {
+    const v = modsOf(x.hero).checks?.[stat];
+    if (v) parts.push({ label: x.name.split(' ')[0].toUpperCase(), value: v });
+  }
   return { total: parts.reduce((s, x) => s + x.value, 0), parts };
 }
 
-export function attackBonus(p: Player) {
-  const stat = CLASSES[p.cls].attackStat;
-  return mod(p.stats[stat]) + profBonus(p.level) + p.weapon.plus;
+export function attackBonus(h: Hero, m: Mods = modsOf(h)) {
+  const stat = CLASSES[h.cls].attackStat;
+  return mod(h.stats[stat]) + profBonus(h.level) + h.weapon.plus + (m.atk ?? 0);
 }
 
-export function damageBonus(p: Player) {
-  return mod(p.stats[CLASSES[p.cls].attackStat]) + p.weapon.plus;
+export function damageBonus(h: Hero, m: Mods = modsOf(h)) {
+  return mod(h.stats[CLASSES[h.cls].attackStat]) + h.weapon.plus + (m.dmg ?? 0);
 }
+
+export const critOn = (h: Hero, m: Mods = modsOf(h)) => 20 - (m.crit ?? 0);
 
 export interface D20Roll {
   dice: number[]; // 1 or 2 dice
@@ -101,18 +122,37 @@ export interface D20Roll {
   success: boolean;
   crit: boolean;
   fumble: boolean;
+  /** a natural 1 was rerolled thanks to the Lucky talent */
+  lucky?: boolean;
+}
+
+export interface RollOpts {
+  r?: Rand;
+  /** reroll natural 1s */
+  lucky?: boolean;
+  /** lowest natural roll that counts as a critical (attacks only) */
+  critOn?: number;
 }
 
 export function d(sides: number, r: Rand = rand) {
   return randInt(1, sides, r);
 }
 
-export function rollD20(bonus: number, dc: number, adv: -1 | 0 | 1 = 0, parts: { label: string; value: number }[] = [], r: Rand = rand): D20Roll {
+export function rollD20(bonus: number, dc: number, adv: -1 | 0 | 1 = 0, parts: Part[] = [], o: RollOpts = {}): D20Roll {
+  const r = o.r ?? rand;
   const dice = adv === 0 ? [d(20, r)] : [d(20, r), d(20, r)];
+  let lucky = false;
+  if (o.lucky) {
+    for (let i = 0; i < dice.length; i++) {
+      if (dice[i] === 1) { dice[i] = d(20, r); lucky = true; }
+    }
+  }
   const kept = adv === 1 ? Math.max(...dice) : adv === -1 ? Math.min(...dice) : dice[0];
   const total = kept + bonus;
-  const crit = kept === 20, fumble = kept === 1;
-  return { dice, kept, adv, bonus, parts, total, dc, crit, fumble, success: crit || (!fumble && total >= dc) };
+  const crit = kept >= (o.critOn ?? 20), fumble = kept === 1;
+  const roll: D20Roll = { dice, kept, adv, bonus, parts, total, dc, crit, fumble, success: crit || (!fumble && total >= dc) };
+  if (lucky) roll.lucky = true;
+  return roll;
 }
 
 export function rollDice(n: number, sides: number, r: Rand = rand): number[] {
@@ -127,26 +167,66 @@ export function successChance(bonus: number, dc: number, adv: -1 | 0 | 1 = 0) {
   return p;
 }
 
-export const XP_LEVELS = [0, 100, 260, 480, 760, 1100, 1500, 2000, 2600, 3300, 4100];
+/** XP_LEVELS[n] is the total XP needed to reach level n + 1. */
+export const XP_LEVELS = [
+  0, 100, 260, 480, 760, 1100, 1500, 2000, 2600, 3300,
+  4100, 5000, 6000, 7100, 8300, 9600, 11000, 12500, 14100, 15800,
+];
+/** Total XP to reach the next level (Infinity at the level cap). */
 export function xpForNext(level: number) {
-  return XP_LEVELS[Math.min(level, XP_LEVELS.length - 1)] ?? level * 500;
+  return level >= MAX_LEVEL ? Infinity : XP_LEVELS[level];
 }
 
-/** Returns number of levels gained (stats chosen in UI). */
-export function gainXp(p: Player, amount: number): number {
-  p.xp += amount;
+export const hpPerLevel = (h: Hero) => Math.max(2, Math.ceil(CLASSES[h.cls].hitDie / 2) + 1 + mod(h.stats.con));
+
+/** +2 to a stat (max 20). CON also raises max HP, as it would have from level 1. */
+export function raiseStat(h: Hero, st: Stat) {
+  if (h.stats[st] >= 20) return false;
+  h.stats[st] = Math.min(20, h.stats[st] + 2);
+  if (st === 'con') { h.maxHp += 2; h.hp += 2; }
+  return true;
+}
+
+/** What a companion raises on their own: their fighting stat, then their other strengths. */
+export function autoRaise(h: Hero) {
+  const def = CLASSES[h.cls];
+  const order: Stat[] = [def.attackStat, ...def.prof, 'con', 'dex', 'wis', 'cha', 'int', 'str'];
+  for (const st of order) if (raiseStat(h, st)) return st;
+  return null;
+}
+
+/**
+ * One level: more HP, a talent point (or, once the tree is complete, another
+ * ability score increase), and ability score increases at 4, 8, 12, 16 and 19.
+ * The player chooses their stat increases; companions (`autoAsi`) choose their own.
+ */
+export function levelUpHero(h: Hero, autoAsi: boolean) {
+  h.level++;
+  const hpGain = hpPerLevel(h);
+  h.maxHp += hpGain;
+  h.hp += hpGain;
+  let asi = ASI_LEVELS.includes(h.level) ? 1 : 0;
+  if (h.talents.length + h.points >= treeSize(h.cls)) asi++;
+  else h.points++;
+  for (let i = 0; i < asi; i++) {
+    if (autoAsi) autoRaise(h);
+    else h.asi++;
+  }
+  return hpGain;
+}
+
+/** Returns the number of levels gained. */
+export function gainXp(h: Hero, amount: number, autoAsi = false): number {
+  h.xp += amount;
   let gained = 0;
-  while (p.xp >= xpForNext(p.level) && p.level < 20) {
-    p.level++;
+  while (h.level < MAX_LEVEL && h.xp >= xpForNext(h.level)) {
+    levelUpHero(h, autoAsi);
     gained++;
-    const hpGain = Math.max(2, Math.ceil(CLASSES[p.cls].hitDie / 2) + 1 + mod(p.stats.con));
-    p.maxHp += hpGain;
-    p.hp += hpGain;
   }
   return gained;
 }
 
-export function heal(p: Player, amount: number) {
+export function heal(p: { hp: number; maxHp: number }, amount: number) {
   const before = p.hp;
   p.hp = Math.min(p.maxHp, p.hp + amount);
   return p.hp - before;
@@ -170,7 +250,7 @@ const CHARM_NAMES: Record<Stat, string[]> = {
 let itemCounter = Date.now() % 100000;
 const uid = () => `i${(itemCounter++).toString(36)}`;
 
-export function randomItem(p: Player, tier: number, r: Rand = rand): Item {
+export function randomItem(p: Hero, tier: number, r: Rand = rand): Item {
   const roll = r();
   const plus = Math.max(1, Math.min(5, Math.round(tier * 0.8 + r() * 1.2)));
   const prefix = WEAPON_PREFIX[Math.min(WEAPON_PREFIX.length - 1, plus)];
@@ -225,7 +305,7 @@ export function equip(p: Player, id: string) {
   else p.charm = it;
 }
 
-function trimBag(p: Player) {
+export function trimBag(p: Player) {
   while (p.bag.length > 8) {
     p.bag.sort((a, b) => itemScore(a) - itemScore(b));
     p.bag.shift();

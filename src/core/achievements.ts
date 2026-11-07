@@ -1,5 +1,6 @@
 // Achievements: long-term goals that make even a 2-minute session feel like progress.
 import { party } from './state';
+import { talent } from './talents';
 import type { GameState, Track } from './types';
 
 export interface AchievementDef {
@@ -46,6 +47,10 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'legend', icon: '👑', name: 'Living Legend', desc: 'Complete 5 quests.', check: (s) => s.questsDone >= 5, progress: (s) => at(s.questsDone, 5) },
   { id: 'seasoned', icon: '🛡️', name: 'Seasoned', desc: 'Reach level 5.', check: (s) => s.player.level >= 5, progress: (s) => at(s.player.level, 5) },
   { id: 'heroic', icon: '🌟', name: 'Heroic', desc: 'Reach level 10.', check: (s) => s.player.level >= 10, progress: (s) => at(s.player.level, 10) },
+  { id: 'apex', icon: '🏔️', name: 'Apex', desc: 'Reach level 20.', check: (s) => s.player.level >= 20, progress: (s) => at(s.player.level, 20) },
+  { id: 'talented', icon: '✦', name: 'Talented', desc: 'Learn your first talent.', check: (s) => (s.player.talents?.length ?? 0) >= 1 },
+  { id: 'mastery', icon: '🌠', name: 'Mastery', desc: 'Learn a tier-4 talent.', check: (s) => (s.player.talents ?? []).some((t) => talent(t)?.row === 4) },
+  { id: 'mentor', icon: '🎓', name: 'Mentor', desc: 'Choose a talent for a companion.', check: (_s, t) => (t.mentored ?? 0) >= 1 },
   { id: 'hoard', icon: '💰', name: 'Dragon\'s Hoard', desc: 'Hold 300 gold at once.', check: (s) => s.player.gold >= 300, progress: (s) => at(s.player.gold, 300) },
   { id: 'patron', icon: '🛒', name: 'Patron of Markets', desc: 'Buy 5 things at markets.', check: (_s, t) => t.buys >= 5, progress: (_s, t) => at(t.buys, 5) },
   { id: 'wonder-seeker', icon: '🗿', name: 'Wonder Seeker', desc: 'Discover 10 kinds of landmark.', check: (_s, t) => t.landmarks.length >= 10, progress: (_s, t) => at(t.landmarks.length, 10) },

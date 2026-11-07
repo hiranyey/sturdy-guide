@@ -11,6 +11,7 @@ import {
 import { pick } from '../core/rng';
 import { STATS } from '../core/types';
 import { LANDMARKS, type LandmarkKind } from '../core/terrain';
+import { talent } from '../core/talents';
 import type {
   Biome, Choice, ClassId, EnemyKind, EventContext, GameEvent, GameState, NpcSpec, RegionInfo, RewardKind, Stat, Tone,
 } from '../core/types';
@@ -33,12 +34,15 @@ Reply with ONLY a single JSON object, no markdown.`;
 function storyContext(s: GameState) {
   const p = s.player;
   return {
-    hero: { name: p.name, class: CLASSES[p.cls].name, level: p.level, hp: `${p.hp}/${p.maxHp}` },
+    hero: { name: p.name, class: CLASSES[p.cls].name, level: p.level, hp: `${p.hp}/${p.maxHp}`, talents: (p.talents ?? []).map((t) => talent(t)?.name).filter(Boolean) },
     day: s.day,
     quest: s.quest ? { title: s.quest.title, goal: s.quest.description, place: s.quest.place } : null,
     story_so_far: s.summary.slice(-900),
     world_facts: s.flags.slice(-8),
-    companions: party(s).map((n) => ({ name: n.name, role: n.role, personality: n.personality, memories: n.memories.slice(-3) })),
+    companions: party(s).map((n) => ({
+      name: n.name, role: n.role, personality: n.personality, memories: n.memories.slice(-3),
+      ...(n.hero ? { class: CLASSES[n.hero.cls].name, level: n.hero.level, talents: n.hero.talents.map((t) => talent(t)?.name).filter(Boolean) } : {}),
+    })),
     recent_events: s.log.slice(-6).map((l) => l.text),
   };
 }
@@ -130,6 +134,8 @@ export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
   };
   if (raw?.npc && typeof raw.npc === 'object' && clip(raw.npc.name, 40)) {
     ev.npc = { name: clip(raw.npc.name, 40), role: clip(raw.npc.role, 40, 'traveller'), look: clip(raw.npc.look, 100), personality: clip(raw.npc.personality, 80) } as NpcSpec;
+    const cls = String(raw.npc.class ?? raw.npc.cls ?? '').toLowerCase();
+    if (cls in CLASSES) ev.npc.cls = cls as ClassId;
   }
   const maxDc = Math.min(20, 12 + ctx.tier * 2);
   for (const c of Array.isArray(raw?.choices) ? raw.choices : []) {
@@ -177,7 +183,7 @@ Context: ${JSON.stringify(storyContext(s))}
 Return JSON:
 {"title": "2-5 words",
  "text": "the scene, 35-70 words, ending on a moment of decision",
- "npc": null or {"name": "...", "role": "...", "look": "short visual description", "personality": "3-6 words"},
+ "npc": null or {"name": "...", "role": "...", "look": "short visual description", "personality": "3-6 words", "class": "warrior|rogue|mage|bard" (how they'd fight if they joined the party)},
  "choices": [ 3 or 4 options, each:
    {"label": "imperative, max 6 words", "kind": "check" | "fight" | "trade" | "rest" | "leave",
     "stat": "str|dex|con|int|wis|cha" (check only), "dc": 8-${Math.min(20, 12 + ctx.tier * 2)} (check only; 10 easy, 13 fair, 16 hard),

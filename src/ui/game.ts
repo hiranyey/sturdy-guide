@@ -14,18 +14,21 @@ import { key, eq, distance, toPixel, compass, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
 import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen } from '../core/state';
 import {
-  CLASSES, checkBonus, armorClass, attackBonus, fmtMod, mod, xpForNext, XP_LEVELS, heal, randomItem, takeItem, itemDesc,
-  equip, sellValue, profBonus, rollDice, gainXp, successChance,
+  CLASSES, armorClass, attackBonus, fmtMod, mod, xpForNext, XP_LEVELS, heal, randomItem, itemDesc,
+  equip, sellValue, profBonus, rollDice, gainXp, successChance, raiseStat,
 } from '../core/rules';
-import { applyCheck, questRewards, type Effects } from '../core/resolve';
-import { makeEnemy, startCombat, playRound, intentText, canUse, type Action, type Beat } from '../core/combat';
+import { heroCheck, partyMods, ensureHero, syncParty, unspent, classForRole, stowLoot, lootNote } from '../core/companions';
+import { ABILITIES, abilitiesOf, TREES, ROW_LEVEL, type AbilityId } from '../core/talents';
+import { openTalents, companionCard, avatar, members, abilityChips } from './talents-ui';
+import { applyCheck, questRewards, goldMult, type Effects } from '../core/resolve';
+import { makeEnemy, startCombat, playRound, useBonus, intentText, canUse, partyUnits, usesLeft, unitAc, unitAtk, potionHeal, afterFight, isDown, type Action, type Beat } from '../core/combat';
 import { FLAVOR, ENEMIES, ENEMY_INTRO, AWAY_GIFTS, OMENS, STYLE_FLAVOR, RIVER_FLAVOR } from '../core/content';
 import { landmarkAt, LANDMARKS, terrainName, riverAt, styleAt, type LandmarkKind } from '../core/terrain';
 import { pick, chance, mulberry32, hashString, randInt } from '../core/rng';
 import { genEvent, genOutcome, genRegion, genQuest, genChapterEnd, type Outcome } from '../ai/director';
 import { aiEnabled } from '../ai/settings';
 import { STATS, STAT_NAMES } from '../core/types';
-import type { Choice, EnemySpec, EventContext, GameEvent, GameState, Item, PoiKind, Stat, NPC } from '../core/types';
+import type { Choice, EnemySpec, EventContext, GameEvent, GameState, Hero, Item, PoiKind, Stat, NPC } from '../core/types';
 
 const POI_LABEL: Record<string, string> = {
   village: 'Village', ruin: 'Ruins', cave: 'Cave', shrine: 'Shrine', camp: 'Camp', tower: 'Tower',
@@ -63,13 +66,13 @@ export class Game {
     );
     this.ticker = h('button', { class: 'ticker', onclick: () => this.openJournal() }, 'Tap a glowing tile to move.');
     const btn = (icon: string, label: string, fn: () => void, cls = '') =>
-      h('button', { class: `dock-btn ${cls}`, onclick: () => { sfx.tap(); fn(); } }, h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label));
+      h('button', { class: `dock-btn ${cls}`, onclick: () => { sfx.tap(); fn(); } }, h('span', { class: 'di' }, icon), h('span', { class: 'dl' }, label), h('i', { class: 'badge-dot', 'aria-hidden': 'true' }));
     this.dock.innerHTML = '';
     this.dock.append(
       this.ticker,
       h('nav', { class: 'dock-nav' },
-        btn('🎒', 'Bag', () => this.openBag()),
-        btn('👥', 'Party', () => this.openParty()),
+        btn('🎒', 'Hero', () => this.openBag(), 'bag-btn'),
+        btn('👥', 'Party', () => this.openParty(), 'party-btn'),
         btn('📜', 'Journal', () => this.openJournal()),
         btn('🏕️', 'Camp', () => this.confirmCamp(), 'camp-btn'),
         btn('⚙️', 'Menu', () => openSettings({ inGame: true, onQuit: () => this.onQuit() })),
@@ -80,6 +83,8 @@ export class Game {
   renderHud() {
     const s = this.s, p = s.player, cls = CLASSES[p.cls];
     const prev = XP_LEVELS[p.level - 1] ?? 0;
+    const maxed = !Number.isFinite(xpForNext(p.level));
+    const growth = unspent(s);
     const torches = Array.from({ length: Math.max(s.maxStamina, s.stamina) }, (_, i) => h('span', { class: `torch ${i < s.stamina ? 'lit' : ''}` }));
     let questChip: HTMLElement | null = null;
     if (s.quest) {
@@ -98,10 +103,11 @@ export class Game {
         h('button', { class: 'hero-chip', onclick: () => this.openBag() },
           h('span', { class: 'hero-glyph', style: `background:${cls.color}` }, cls.glyph),
           h('span', { class: 'hero-txt' }, h('b', null, p.name), h('small', null, `Lv ${p.level} ${cls.name}`)),
+          growth ? h('span', { class: 'grow-badge', 'aria-label': 'Talent points to spend' }, '✦') : null,
         ),
         h('div', { class: 'hud-bars' },
           bar(p.hp, p.maxHp, `hp ${p.hp / p.maxHp < 0.35 ? 'low' : ''}`, `♥ ${p.hp}/${p.maxHp}`),
-          bar(p.xp - prev, xpForNext(p.level) - prev, 'xp', `XP ${p.xp}/${xpForNext(p.level)}`),
+          maxed ? bar(1, 1, 'xp', `XP ${p.xp} · MAX`) : bar(p.xp - prev, xpForNext(p.level) - prev, 'xp', `XP ${p.xp}/${xpForNext(p.level)}`),
         ),
         h('div', { class: 'hud-res' },
           h('span', { title: 'Gold' }, '🪙', h('b', null, String(p.gold))),
@@ -133,6 +139,8 @@ export class Game {
     this.checkAch();
     save(this.s);
     this.renderHud();
+    this.dock.querySelector('.bag-btn')?.classList.toggle('badged', (this.s.player.points ?? 0) + (this.s.player.asi ?? 0) > 0);
+    this.dock.querySelector('.party-btn')?.classList.toggle('badged', members(this.s).slice(1).some((m) => m.hero.points > 0));
     this.map.invalidate(300);
   }
 
@@ -227,6 +235,7 @@ export class Game {
       await this.recap();
       if (!this.s.quest) await this.ensureQuest(true);
       await this.resumeInterrupted();
+      await this.pendingGrowth();
     }
     this.regionCheck(this.s.pos);
     if (this.s.omen) trackSeen(this.s, 'omens', this.s.omen);
@@ -627,7 +636,7 @@ export class Game {
     const p = this.s.player;
     let badge: HTMLElement;
     if (c.kind === 'check' && c.stat && c.dc) {
-      const b = checkBonus(p, c.stat).total;
+      const b = heroCheck(this.s, c.stat).total;
       const pct = Math.min(95, Math.max(5, ((21 - (c.dc - b)) / 20) * 100));
       badge = h('span', { class: `cbadge ${pct >= 65 ? 'easy' : pct >= 40 ? 'fair' : 'hard'}` }, `${c.stat.toUpperCase()} ${c.dc}`);
     } else {
@@ -639,7 +648,7 @@ export class Game {
     const rewardText: Record<string, string> = { gold: 'Gold', item: 'An item', ally: 'Win a friend', heal: 'Healing', lore: 'Knowledge & map reveal', xp: 'Experience' };
     let aria = c.label;
     if (c.kind === 'check' && c.stat && c.dc) {
-      const cb = checkBonus(p, c.stat);
+      const cb = heroCheck(this.s, c.stat);
       aria += `. ${STAT_NAMES[c.stat]} check, DC ${c.dc}, ${Math.round(successChance(cb.total, c.dc) * 100)} percent chance.`;
     } else aria += `. ${c.kind}.`;
     const btn = h('button', { class: `choice choice-${c.kind}`, 'aria-label': aria, onclick: () => { sfx.tap(); onClick(); } },
@@ -649,7 +658,7 @@ export class Game {
     // Press and hold a choice to see exactly what you are getting into.
     longPress(btn, (x, y) => {
       if (c.kind === 'check' && c.stat && c.dc) {
-        const cb = checkBonus(p, c.stat);
+        const cb = heroCheck(this.s, c.stat);
         const pct = Math.round(successChance(cb.total, c.dc) * 100);
         popover(x, y, h('b', null, `${STAT_NAMES[c.stat]} check · DC ${c.dc}`),
           h('div', { class: 'pv-row' }, h('span', null, 'Your roll'), h('span', null, `d20 ${cb.parts.map((q) => `${fmtMod(q.value)} ${q.label}`).join(' ')}`)),
@@ -698,6 +707,7 @@ export class Game {
       }
       p.gold -= cost;
       const healed = heal(p, inn ? p.maxHp : Math.ceil(p.maxHp / 2));
+      for (const n of party(s)) if (n.hero) heal(n.hero, inn ? n.hero.maxHp : Math.ceil(n.hero.maxHp / 2));
       const torches = inn ? Math.max(0, Math.min(3, s.maxStamina - s.stamina)) : 0;
       s.stamina += torches;
       sfx.heal();
@@ -723,7 +733,7 @@ export class Game {
     }
     // ---- skill check ----
     const stat = c.stat as Stat;
-    const cb = checkBonus(p, stat);
+    const cb = heroCheck(s, stat);
     let fx: Effects | null = null;
     let outcomeP: Promise<Outcome> | null = null;
     const { roll } = await rollCheck({
@@ -733,6 +743,7 @@ export class Game {
       bonus: cb.total,
       parts: cb.parts,
       canInspire: p.inspiration,
+      lucky: partyMods(s).lucky,
       extra: (r) => r.crit
         ? h('button', { class: 'share-btn', onclick: () => shareCard(s, { kind: 'crit', title: `${STAT_NAMES[stat]} check`, subtitle: c.label, total: r.total, dc: r.dc }) }, '📤 Share this moment')
         : null,
@@ -790,15 +801,9 @@ export class Game {
       actions.append(
         h('div', { class: 'recruit' }, portraitEl(npc.name, 44), h('span', null, h('b', null, npc.name), ' wants to travel with you!')),
         h('button', { class: 'choice choice-ally', onclick: () => {
-          npc.inParty = true;
-          track(s).recruits++;
-          npc.power = Math.max(npc.power, s.player.level);
-          s.stats.friends++;
           remember(npc, `Joined ${s.player.name}'s party on day ${s.day}`);
-          log(s, `welcomed ${npc.name} into the party`, 'friend');
+          this.joinParty(npc, `welcomed ${npc.name} into the party`);
           sfx.level();
-          toast(`${npc.name} joined your party!`, 'good');
-          this.persist();
           sheet.close();
         } }, h('span', { class: 'clabel' }, 'Welcome them aboard'), h('span', { class: 'cbadge rest' }, '♥ JOIN')),
         h('button', { class: 'choice choice-leave', onclick: () => sheet.close() }, h('span', { class: 'clabel' }, 'Not now'), h('span', { class: 'cbadge leave' }, 'LATER')),
@@ -806,6 +811,20 @@ export class Game {
     } else {
       actions.append(h('button', { class: 'btn btn-primary wide', onclick: () => sheet.close() }, 'Continue'));
     }
+  }
+
+  /** Someone joins: they become a full party member at the hero's level. */
+  private joinParty(npc: NPC, logText: string) {
+    const s = this.s;
+    npc.inParty = true;
+    track(s).recruits++;
+    s.stats.friends++;
+    const h0 = ensureHero(npc, s.player.level);
+    h0.hp = Math.max(h0.hp, Math.ceil(h0.maxHp / 2));
+    log(s, logText, 'friend');
+    const c = CLASSES[h0.cls];
+    toast(`${npc.name} joined your party — a level ${h0.level} ${c.name}!${h0.points ? ` ✦ ${h0.points} talent point${h0.points > 1 ? 's' : ''} to spend.` : ''}`, 'good', 3600);
+    this.persist();
   }
 
   // ================= Combat =================
@@ -824,14 +843,14 @@ export class Game {
       s.pending = null;
       s.pendingFight = { spec, tier, boss, intro, ...resume };
       save(s);
-      const enemy = makeEnemy(spec, tier, boss);
+      const allies = party(s).filter((n) => n.hero);
+      const enemy = makeEnemy(spec, tier, boss, allies.length);
       const cs = startCombat(enemy);
       setMood('combat');
       const sheet = new Sheet('combat');
       const tray = new DiceTray();
       const logEl = h('div', { class: 'clog' }, h('div', { class: 'cl system' }, intro));
       const foeHp = h('div');
-      const meHp = h('div');
       const intentEl = h('div', { class: 'intent' });
       const sprite = h('div', { class: `foe-sprite ${boss ? 'boss' : ''}` }, enemy.emoji);
       const foeCard = h('div', { class: 'foe-card' }, sprite,
@@ -840,52 +859,93 @@ export class Game {
           h('div', { class: 'foe-meta' }, `${enemy.kind} · `, h('span', { class: 'ac' }, `🛡 AC ${enemy.ac}`), ` · ${'☠'.repeat(tier)}`),
           foeHp));
       const actionsEl = h('div', { class: 'actions' });
+      const abilRow = h('div', { class: 'abil-row', role: 'group', 'aria-label': 'Abilities' });
       let inspire = false;
       const inspBtn = h('button', { class: 'insp-toggle', onclick: () => {
         if (!p.inspiration) return;
         inspire = !inspire;
         inspBtn.classList.toggle('on', inspire);
         sfx.tap();
-      } }, '✨ Inspiration: advantage on next roll');
-      const allies = party(s);
-      const meRow = h('div', { class: 'me-row' },
-        h('span', { class: 'hero-glyph sm', style: `background:${CLASSES[p.cls].color}` }, CLASSES[p.cls].glyph),
-        meHp,
-        ...allies.map((a) => portraitEl(a.name, 30)));
-      sheet.set(h('div', { class: 'combat-wrap' }, foeCard, intentEl, tray.el, logEl, meRow, inspBtn, actionsEl));
+      } }, h('span', { class: 'ab-icon' }, '✨'), h('b', null, 'Inspire'), h('small', null, 'advantage on next roll'));
+
+      // Party row: one chip per member with their own HP bar; floating numbers land on them.
+      const ms = members(s);
+      const chips = new Map<string, { el: HTMLElement; hp: HTMLElement }>();
+      const partyRow = h('div', { class: `party-row n${ms.length}` }, ...ms.map((m) => {
+        const hp = h('div', { class: 'pc-hp' });
+        const el = h('div', { class: `pchip ${m.id === 'you' ? 'me' : ''}` }, avatar(m, m.id === 'you' ? 34 : 28),
+          h('div', { class: 'pc-body' }, h('small', { class: 'pc-name' }, m.id === 'you' ? CLASSES[p.cls].name : `${m.name.split(' ')[0]} · ${CLASSES[m.hero.cls].glyph}`), hp));
+        chips.set(m.id, { el, hp });
+        return el;
+      }));
+      abilRow.appendChild(inspBtn);
+      sheet.set(h('div', { class: 'combat-wrap' }, foeCard, intentEl, tray.el, logEl, partyRow, abilRow, actionsEl));
 
       const refresh = () => {
         foeHp.replaceChildren(bar(enemy.hp, enemy.maxHp, 'foe', `${enemy.hp}/${enemy.maxHp}`));
-        meHp.replaceChildren(bar(p.hp, p.maxHp, `hp ${p.hp / p.maxHp < 0.35 ? 'low' : ''}`, `♥ ${p.hp}/${p.maxHp} · AC ${armorClass(p)}`));
+        const units = partyUnits(s);
+        for (const u of units) {
+          const c = chips.get(u.id);
+          if (!c) continue;
+          const down = u.hero.hp <= 0;
+          c.el.classList.toggle('down', down);
+          c.hp.replaceChildren(bar(u.hero.hp, u.hero.maxHp, `hp ${down ? 'down' : u.hero.hp / u.hero.maxHp < 0.35 ? 'low' : ''}`,
+            down ? '✖ down' : u.isPlayer ? `♥ ${u.hero.hp}/${u.hero.maxHp}${units.length < 3 ? ` · AC ${unitAc(cs, units, u)}` : ''}` : `${u.hero.hp}/${u.hero.maxHp}`));
+        }
         const it = intentText(enemy);
-        intentEl.className = `intent ${enemy.intent}`;
+        intentEl.className = `intent ${enemy.stun > 0 ? 'stunned' : enemy.intent}`;
         intentEl.textContent = `${it.icon} ${it.text}`;
         inspBtn.style.display = p.inspiration ? '' : 'none';
         if (!p.inspiration) { inspire = false; inspBtn.classList.remove('on'); }
         this.renderHud();
       };
-      const cls = CLASSES[p.cls];
-      const actionDefs: [Action, string, string][] = [
-        ['attack', p.cls === 'mage' ? '🔥 Firebolt' : '⚔️ Attack', `${fmtMod(attackBonus(p))} vs AC · d${p.weapon.die}`],
-        ['ability', `💥 ${cls.ability.name}`, 'once per fight'],
-        ['defend', '🛡️ Defend', '+4 AC, recover'],
-        ['potion', '🧪 Potion', `${p.potions} left · 2d4+4`],
-        ['talk', enemy.kind === 'beast' ? '🤚 Calm' : '💬 Talk', `${enemy.talkStat.toUpperCase()} DC ${enemy.talkable ? enemy.talkDC : enemy.talkDC + 5}`],
-        ['flee', '🏃 Flee', `DEX DC ${9 + tier + (boss ? 4 : 0)}`],
-      ];
+      const me = () => partyUnits(s)[0];
+      const baseDefs = (): [Action, string, string][] => {
+        const units = partyUnits(s);
+        const ph = potionHeal(s);
+        const fa = usesLeft(cs, units[0], 'first_aid');
+        return [
+          ['attack', p.cls === 'mage' ? '🔥 Firebolt' : '⚔️ Attack', `${fmtMod(unitAtk(cs, units, units[0]))} vs AC · d${p.weapon.die}`],
+          ['defend', '🛡️ Defend', '+4 AC, recover'],
+          ['potion', '🧪 Potion', `${p.potions} left · 2d4+${ph.bonus}`],
+          ['talk', enemy.kind === 'beast' ? '🤚 Calm' : '💬 Talk', `${enemy.talkStat.toUpperCase()} DC ${enemy.talkable ? enemy.talkDC : enemy.talkDC + 5}`],
+          ['flee', '🏃 Flee', `DEX DC ${9 + tier + (boss ? 4 : 0)}`],
+          ['first_aid', '🩹 First Aid', fa > 0 ? 'heal the most hurt' : 'used'],
+        ];
+      };
       const buttons = new Map<Action, HTMLButtonElement>();
-      for (const [a, label, sub] of actionDefs) {
+      for (const [a, label, sub] of baseDefs()) {
         const b = h('button', { class: `act act-${a}`, onclick: () => act(a) }, h('b', null, label), h('small', null, sub));
         buttons.set(a, b);
         actionsEl.appendChild(b);
       }
+      // Class abilities: signature first, then whatever the talent tree has unlocked.
+      const abilIds = abilitiesOf(p).filter((id) => id !== 'first_aid');
+      const abilBtns = new Map<AbilityId, HTMLButtonElement>();
+      for (const id of abilIds) {
+        const def = ABILITIES[id];
+        const b = h('button', { class: `abil-btn ${def.bonus ? 'bonus' : ''}`, 'aria-label': `${def.name}. ${def.desc}`, onclick: () => (def.bonus ? bonusAct(id) : act(id)) },
+          h('span', { class: 'ab-icon' }, def.icon),
+          h('span', { class: 'ab-text' }, h('b', null, def.name), h('small', null, '')));
+        longPress(b, (x, y) => popover(x, y, h('b', null, `${def.icon} ${def.name}`), h('div', { class: 'pv-lore' }, def.desc), h('div', { class: 'pv-row' }, h('span', null, def.bonus ? '⚡ Bonus action' : '⚔ Action'), h('span', null, `${usesLeft(cs, me(), id)} left`))));
+        abilBtns.set(id, b);
+        abilRow.appendChild(b);
+      }
       const setEnabled = (on: boolean) => {
-        for (const [a, b] of buttons) b.disabled = !on || !canUse(s, cs, a);
-        const pot = buttons.get('potion')!;
-        pot.querySelector('small')!.textContent = `${p.potions} left · 2d4+4`;
+        const defs = baseDefs();
+        for (const [a, b] of buttons) {
+          b.disabled = !on || !canUse(s, cs, a);
+          const d0 = defs.find((x) => x[0] === a);
+          if (d0) b.querySelector('small')!.textContent = d0[2];
+        }
+        for (const [id, b] of abilBtns) {
+          const left = usesLeft(cs, me(), id);
+          b.disabled = !on || !canUse(s, cs, id);
+          b.querySelector('small')!.textContent = String(Math.max(0, left));
+          b.title = `${ABILITIES[id].bonus ? 'Bonus action · ' : ''}${left} left`;
+        }
       };
-      const floatText = (target: 'enemy' | 'player', text: string, cls2: string) => {
-        const host = target === 'enemy' ? sprite : meRow;
+      const floatText = (host: HTMLElement, text: string, cls2: string) => {
         const f = h('span', { class: `float ${cls2}` }, text);
         host.appendChild(f);
         setTimeout(() => f.remove(), 1000);
@@ -895,20 +955,34 @@ export class Game {
         logEl.appendChild(line);
         logEl.scrollTop = logEl.scrollHeight;
       };
+      const nameOf = (id?: string) => (!id || id === 'you' ? 'You' : s.npcs[id]?.name.split(' ')[0] ?? 'Ally');
       const playBeat = async (b: Beat) => {
-        const label = b.actor === 'you' ? 'You' : b.actor === 'foe' ? enemy.name : b.actor === 'ally' ? 'Ally' : 'Fate';
+        const label = b.actor === 'you' ? 'You' : b.actor === 'foe' ? enemy.name : b.actor === 'ally' ? nameOf(b.who) : 'Fate';
         if (b.d20) await tray.showD20(b.d20, label, b.actor !== 'you' && b.actor !== 'system');
         else tray.clear();
         if (b.dmg) await tray.showDamage(b.dmg, b.floatText?.startsWith('+') ? 'healed' : 'damage');
         addLine(b);
         if (b.floatOn && b.floatText) {
           const neg = b.floatText.startsWith('-');
-          floatText(b.floatOn, b.floatText, neg ? (b.floatOn === 'enemy' ? 'dmg' : 'hurt') : b.floatText.startsWith('+') ? 'heal' : 'miss');
+          const host = b.floatOn === 'enemy' ? sprite : chips.get(b.target ?? 'you')?.el ?? partyRow;
+          floatText(host, b.floatText, neg ? (b.floatOn === 'enemy' ? 'dmg' : 'hurt') : b.floatText.startsWith('+') ? 'heal' : 'miss');
           if (neg && b.floatOn === 'enemy') { sprite.classList.remove('hit'); void sprite.offsetWidth; sprite.classList.add('hit'); sfx.hit(); vibrate(25); }
-          if (neg && b.floatOn === 'player') { document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); sfx.hit(); vibrate([50, 30, 50]); }
+          if (neg && b.floatOn === 'unit') {
+            if ((b.target ?? 'you') === 'you') { document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); vibrate([50, 30, 50]); }
+            else { host.classList.remove('hit'); void host.offsetWidth; host.classList.add('hit'); vibrate(20); }
+            sfx.hit();
+          }
+          if (b.floatText.startsWith('+')) sfx.heal();
         }
         refresh();
         await wait(b.actor === 'you' ? 450 : 350);
+      };
+      const bonusAct = async (id: AbilityId) => {
+        setEnabled(false);
+        sfx.tap();
+        const beats = useBonus(s, cs, id);
+        for (const b of beats) await playBeat(b);
+        setEnabled(true);
       };
       const act = async (a: Action) => {
         setEnabled(false);
@@ -926,6 +1000,7 @@ export class Game {
       const finish = async () => {
         const end = cs.end!;
         actionsEl.innerHTML = '';
+        abilRow.remove();
         inspBtn.remove();
         const summary: string[] = [];
         let levels = 0;
@@ -934,14 +1009,13 @@ export class Game {
           s.stats.chapterKills++;
           sprite.classList.add('defeated');
           const xp = Math.round(enemy.xp * (hasOmen(s, 'blood-moon') ? 1.5 : 1));
-          const gold = Math.round(enemy.gold * (hasOmen(s, 'golden-hour') ? 1.5 : 1));
+          const gold = Math.round(enemy.gold * (hasOmen(s, 'golden-hour') ? 1.5 : 1) * goldMult(s));
           p.gold += gold;
           summary.push(`+${xp} XP`, `+${gold} gold`);
           levels = gainXp(s.player, xp);
           if (chance(boss ? 1 : 0.3)) {
             const it = randomItem(p, tier);
-            const eqd = takeItem(p, it);
-            summary.push(`${it.name} (${itemDesc(it)})${eqd ? ' — equipped!' : ''}`);
+            summary.push(`${it.name} (${itemDesc(it)})${lootNote(stowLoot(s, it))}`);
           }
           if (chance(0.25) && p.potions < 6) { p.potions++; summary.push('+1 potion'); }
           sfx.crit();
@@ -954,18 +1028,18 @@ export class Game {
           sfx.level();
           if (party(s).length < 2) {
             actionsEl.append(h('button', { class: 'act act-talk', onclick: () => {
-              npc.inParty = true;
-              track(s).recruits++;
-              s.stats.friends++;
-              log(s, `${npc.name}, once a foe, joined the party`, 'friend');
-              toast(`${npc.name} joined your party!`, 'good');
-              this.persist();
+              this.joinParty(npc, `${npc.name}, once a foe, joined the party`);
               close();
             } }, h('b', null, `♥ Invite ${npc.name}`), h('small', null, 'to join your party')));
           }
         } else if (end === 'flee') {
           summary.push('Escaped');
         }
+        // The fallen get back up; Song of Rest mends the party after a win.
+        const fallen = partyUnits(s).filter((u) => !u.isPlayer && isDown(u)).map((u) => u.name);
+        summary.push(...afterFight(s, end === 'win'));
+        if (fallen.length && end !== 'down') summary.push(`${fallen.join(' & ')} back up (1 HP)`);
+        refresh();
         if (end !== 'down') {
           logEl.appendChild(h('div', { class: `cl result ${end}` }, end === 'win' ? `🏆 Victory! ${enemy.name} is defeated.` : end === 'friend' ? '🤝 The fight is over — peacefully.' : '💨 You got away.'));
           logEl.appendChild(h('div', { class: 'chips' }, ...summary.map((x) => h('span', { class: 'chip good' }, x))));
@@ -999,6 +1073,7 @@ export class Game {
     const lost = Math.floor(s.player.gold * 0.25);
     s.player.gold -= lost;
     s.player.hp = Math.max(1, Math.ceil(s.player.maxHp / 2));
+    for (const n of party(s)) if (n.hero) n.hero.hp = Math.max(n.hero.hp, Math.ceil(n.hero.maxHp / 2));
     s.stamina = 0;
     const comp = party(s)[0];
     log(s, `fell in battle and was ${comp ? `dragged to safety by ${comp.name}` : 'found by a passing stranger'}`, 'fight');
@@ -1038,34 +1113,83 @@ export class Game {
     await this.ensureQuest(true);
   }
 
+  /** Full rest for everyone, fallen companions included. */
+  private healParty() {
+    const s = this.s;
+    s.player.hp = s.player.maxHp;
+    for (const n of party(s)) if (n.hero) n.hero.hp = n.hero.maxHp;
+  }
+
   // ================= Level up =================
+  /**
+   * The hero gained `levels`. Show what grew, ask for any ability score
+   * increases, bring companions up to the same level, then offer the talent tree.
+   */
   private async levelUp(levels: number) {
+    const s = this.s, p = s.player;
+    sfx.level();
+    vibrate([30, 30, 30, 30, 120]);
+    const grown = syncParty(s);
+    const from = p.level - levels;
+    const m = modal('levelup');
+    const body = h('div', { class: 'lvl-body' });
+    m.card.append(
+      h('div', { class: 'eyebrow' }, 'Level up!'),
+      h('h2', { class: 'lvl' }, levels > 1 ? `Level ${from} → ${p.level}` : `Level ${p.level}`),
+      h('div', { class: 'lvl-gains' },
+        h('span', null, '♥ ', h('b', null, String(p.maxHp)), ' max HP'),
+        h('span', null, '🎯 ', h('b', null, fmtMod(profBonus(p.level))), ' proficiency'),
+        p.points ? h('span', { class: 'gold' }, '✦ ', h('b', null, String(p.points)), p.points === 1 ? ' talent point' : ' talent points') : null,
+      ),
+      body,
+    );
+    await this.chooseStats(body);
+    body.replaceChildren();
+    if (grown.length) {
+      body.append(h('div', { class: 'lvl-party' }, ...grown.map((g) => h('div', { class: 'lp' }, portraitEl(g.npc.name, 30),
+        h('span', null, h('b', null, g.npc.name), ` reached level ${g.to}${g.npc.hero!.points ? ` · ✦ ${g.npc.hero!.points}` : ''}`)))));
+    }
+    const anyPoints = members(s).some((x) => x.hero.points > 0);
+    const nextTalent = TREES[p.cls].nodes.find((n) => n.row > 1 && p.level === ROW_LEVEL[n.row]);
+    if (nextTalent) body.append(h('p', { class: 'muted small center' }, `New tier unlocked: tier ${nextTalent.row} talents are open.`));
+    await new Promise<void>((res) => body.append(h('div', { class: 'row lvl-actions' },
+      anyPoints ? h('button', { class: 'btn btn-primary', onclick: () => { m.close(); res(); openTalents(s, p.points ? 'you' : members(s).find((x) => x.hero.points > 0)!.id, () => this.persist()); } }, '✦ Choose talents') : null,
+      h('button', { class: `btn ${anyPoints ? '' : 'btn-primary'}`, onclick: () => { m.close(); res(); } }, anyPoints ? 'Later' : 'Onward'),
+    )));
+    this.persist();
+  }
+
+  /** Spend any pending ability score increases (+2 to a stat). */
+  private async chooseStats(host: HTMLElement) {
     const p = this.s.player;
-    for (let i = 0; i < levels; i++) {
-      sfx.level();
-      vibrate([30, 30, 30, 30, 120]);
-      const m = modal('levelup');
+    while ((p.asi ?? 0) > 0) {
       const grid = h('div', { class: 'stat-pick' });
-      m.card.append(
-        h('div', { class: 'eyebrow' }, 'Level up!'),
-        h('h2', { class: 'lvl' }, `Level ${p.level - levels + i + 1}`),
-        h('p', null, `Max HP is now ${p.maxHp}. Proficiency ${fmtMod(profBonus(p.level))}. Choose a stat to raise by +2:`),
-        grid,
-      );
+      host.replaceChildren(h('p', null, h('b', null, 'Ability score increase!'), ' Choose a stat to raise by +2:'), grid);
       await new Promise<void>((res) => {
         for (const st of STATS) {
           grid.appendChild(h('button', { class: 'stat-btn', disabled: p.stats[st] >= 20, onclick: () => {
-            p.stats[st] = Math.min(20, p.stats[st] + 2);
-            if (st === 'con') { p.maxHp += 2; p.hp += 2; }
-            m.close();
+            raiseStat(p, st);
+            p.asi--;
+            sfx.tap();
             res();
           } }, h('b', null, st.toUpperCase()), h('span', null, `${p.stats[st]} → ${Math.min(20, p.stats[st] + 2)}`), h('small', null, `${fmtMod(mod(p.stats[st]))} → ${fmtMod(mod(Math.min(20, p.stats[st] + 2)))}`)));
         }
       });
-      // Companions grow with you.
-      for (const a of party(this.s)) a.power++;
+      this.persist();
     }
-    this.persist();
+  }
+
+  /** On resume: finish any stat increase that was interrupted, and nudge about unspent talents. */
+  private async pendingGrowth() {
+    const s = this.s;
+    if ((s.player.asi ?? 0) > 0) {
+      const m = modal('levelup');
+      const body = h('div');
+      m.card.append(h('div', { class: 'eyebrow' }, 'Unfinished business'), body);
+      await this.chooseStats(body);
+      m.close();
+    }
+    if (unspent(s) > 0) setTimeout(() => toast('✦ Talent points waiting — open Hero or Party to spend them.', 'gold', 3600), 1200);
   }
 
   // ================= Shop & village =================
@@ -1083,7 +1207,7 @@ export class Game {
         h('button', { class: 'choice', onclick: () => {
           if (s.player.gold < cost) return toast(`A bed costs ${cost} gold.`, 'bad');
           s.player.gold -= cost;
-          heal(s.player, s.player.maxHp);
+          this.healParty();
           const t = Math.max(0, Math.min(3, s.maxStamina - s.stamina));
           s.stamina += t;
           sfx.heal();
@@ -1102,7 +1226,7 @@ export class Game {
       const it = randomItem(p, tier, r);
       return { ...it, price: 18 + tier * 14 + it.plus * 8 };
     });
-    const disc = hasOmen(s, 'market-day') ? 0.7 : 1;
+    const disc = (hasOmen(s, 'market-day') ? 0.7 : 1) * (1 - (partyMods(s).discount ?? 0) / 100);
     stock.forEach((it) => (it.price = Math.round(it.price * disc)));
     const potionPrice = Math.round((10 + tier * 3) * disc);
     const sheet = new Sheet('event', { dismissable: true });
@@ -1120,9 +1244,9 @@ export class Game {
               p.gold -= it.price; it.sold = true;
               track(s).buys++;
               const { price: _price, sold: _sold, ...item } = it;
-              const eqd = takeItem(p, item);
+              const who = stowLoot(s, item);
               sfx.coin();
-              toast(`Bought ${it.name}${eqd ? ' — equipped!' : ' (in bag)'}`, 'gold');
+              toast(`Bought ${it.name}${who ? lootNote(who) : ' (in bag)'}`, 'gold');
               this.persist(); render();
             } }, it.sold ? 'SOLD' : `${it.price}g`))),
         ),
@@ -1197,7 +1321,7 @@ export class Game {
     this.persist();
     await sheet.done;
     s.day++;
-    s.player.hp = s.player.maxHp;
+    this.healParty();
     stopSpeech();
     const omen = startDay(s);
     trackSeen(s, 'omens', omen.id);
@@ -1221,19 +1345,27 @@ export class Game {
     const s = this.s, p = s.player, cls = CLASSES[p.cls];
     const sheet = new Sheet('panel', { dismissable: true });
     const render = () => {
+      const allies = party(s).filter((n) => n.hero);
       const slot = (label: string, it: Item | null, icon: string) => h('div', { class: 'gear' }, h('span', { class: 'si-icon' }, icon),
         h('div', null, h('small', null, label), h('b', null, it ? it.name : '—'), it ? h('small', null, itemDesc(it)) : null));
+      const ph = potionHeal(s);
       sheet.set(
         h('div', { class: 'panel-head' }, h('span', { class: 'hero-glyph', style: `background:${cls.color}` }, cls.glyph),
           h('div', null, h('h2', null, p.name), h('small', null, `Level ${p.level} ${cls.name} · AC ${armorClass(p)} · ATK ${fmtMod(attackBonus(p))} · PROF ${fmtMod(profBonus(p.level))}`))),
         h('div', { class: 'stat-grid' }, ...STATS.map((st) => h('div', { class: `stat ${cls.prof.includes(st) ? 'prof' : ''}` },
           h('small', null, st.toUpperCase()), h('b', null, fmtMod(mod(p.stats[st]))), h('span', null, String(p.stats[st]))))),
-        h('p', { class: 'muted small' }, `Gold-ringed stats are proficient (+${profBonus(p.level)} on checks). ${cls.ability.name}: ${cls.ability.desc}`),
+        h('p', { class: 'muted small' }, `Gold-ringed stats are proficient (+${profBonus(p.level)} on checks).`),
+        h('button', { class: `talent-cta ${p.points ? 'has' : ''}`, onclick: () => { sheet.close(); openTalents(s, 'you', () => this.persist()); } },
+          h('span', { class: 'tc-icon' }, '✦'),
+          h('span', { class: 'tc-text' }, h('b', null, 'Talents & abilities'), h('small', null, p.points ? `${p.points} point${p.points > 1 ? 's' : ''} to spend!` : `${p.talents.length} of ${TREES[p.cls].nodes.length} learned`)),
+          h('span', { class: 'tc-go' }, '›')),
+        abilityChips(p),
+        p.asi ? h('button', { class: 'btn btn-primary wide', onclick: async () => { sheet.close(); await this.pendingGrowth(); } }, '⬆ Raise a stat (+2)') : null,
         h('div', { class: 'gear-list' }, slot('Weapon', p.weapon, '🗡️'), slot('Armor', p.armor, '🛡️'), slot('Charm', p.charm, '💍')),
-        h('div', { class: 'shop-item' }, h('span', { class: 'si-icon' }, '🧪'), h('div', null, h('b', null, `Potions × ${p.potions}`), h('small', null, 'Heal 2d4+4')),
+        h('div', { class: 'shop-item' }, h('span', { class: 'si-icon' }, '🧪'), h('div', null, h('b', null, `Potions × ${p.potions}`), h('small', null, `Heal 2d4+${ph.bonus}`)),
           h('button', { class: 'buy', disabled: !p.potions || p.hp >= p.maxHp, onclick: () => {
             p.potions--;
-            const amt = heal(p, rollDice(2, 4).reduce((a, b) => a + b, 0) + 4);
+            const amt = heal(p, rollDice(ph.n, ph.sides).reduce((a, b) => a + b, 0) + ph.bonus);
             sfx.heal();
             toast(`+${amt} HP`, 'good');
             this.persist(); render();
@@ -1241,9 +1373,17 @@ export class Game {
         p.inspiration ? h('div', { class: 'gift' }, '✨ You have Inspiration — spend it on any roll for advantage.') : null,
         h('h3', null, `Bag (${p.bag.length}/8)`),
         p.bag.length ? null : h('p', { class: 'muted small' }, 'Empty. Better loot is equipped automatically.'),
-        ...p.bag.map((it) => h('div', { class: 'shop-item' }, h('span', { class: 'si-icon' }, it.slot === 'weapon' ? '🗡️' : it.slot === 'armor' ? '🛡️' : '💍'),
+        ...p.bag.map((it) => h('div', { class: 'shop-item bag-item' }, h('span', { class: 'si-icon' }, it.slot === 'weapon' ? '🗡️' : it.slot === 'armor' ? '🛡️' : '💍'),
           h('div', null, h('b', null, it.name), h('small', null, `${itemDesc(it)} · ${compareTo(p, it)}`)),
-          h('button', { class: 'buy', onclick: () => { equip(p, it.id); sfx.tap(); this.persist(); render(); } }, 'Equip'))),
+          h('div', { class: 'bag-btns' },
+            h('button', { class: 'buy', onclick: () => { equip(p, it.id); sfx.tap(); this.persist(); render(); } }, 'Equip'),
+            ...allies.map((n) => h('button', { class: 'buy give', 'aria-label': `Give to ${n.name}`, title: `${n.name}: ${compareTo(n.hero!, it)}`, onclick: () => {
+              giveItem(p, n.hero!, it.id);
+              remember(n, `${p.name} gave them ${it.name}`);
+              sfx.coin();
+              toast(`${n.name} equips ${it.name}.`, 'good');
+              this.persist(); render();
+            } }, portraitEl(n.name, 18), compareTo(n.hero!, it).startsWith('▲') ? '▲' : ''))))),
         h('button', { class: 'btn wide', onclick: () => sheet.close() }, 'Close'),
       );
     };
@@ -1251,34 +1391,48 @@ export class Game {
   }
 
   openParty() {
-    const s = this.s;
+    const s = this.s, p = s.player;
     const sheet = new Sheet('panel', { dismissable: true });
     const render = () => {
       const allies = party(s);
       const others = Object.values(s.npcs).filter((n) => !n.inParty);
+      const ph = potionHeal(s);
       sheet.set(
         h('h2', null, 'Your Party'),
-        allies.length ? null : h('p', { class: 'muted' }, 'You travel alone. Win people over in events — charm, help, or spare them — and they may join you (max 2). Companions fight beside you and remember what you\'ve done.'),
-        ...allies.map((n) => h('div', { class: 'npc-card' }, portraitEl(n.name, 64),
-          h('div', { class: 'npc-body' },
-            h('b', null, n.name), h('small', null, `${n.role} · ${n.personality}`),
-            h('div', { class: 'aff-bar' }, bar(n.affinity + 100, 200, 'aff', affinityLabel(n.affinity))),
-            n.memories.length ? h('ul', { class: 'mem' }, ...n.memories.slice(-3).map((m) => h('li', null, m))) : null,
-            h('button', { class: 'link', onclick: () => {
-              if (!confirm(`Part ways with ${n.name}?`)) return;
-              n.inParty = false;
-              remember(n, `Parted ways with ${s.player.name} on day ${s.day}`);
-              this.persist(); render();
-            } }, 'Part ways')))),
+        allies.length ? h('p', { class: 'muted small' }, 'Companions are heroes too: each has a class, levels up with you, and grows their own talent tree. Tap Talents to choose for them.') : h('p', { class: 'muted' }, 'You travel alone. Win people over in events — charm, help, or spare them — and they may join you (max 2). Companions fight beside you with their own class and talents, and remember what you\'ve done.'),
+        ...allies.map((n) => {
+          const hero = ensureHero(n, 1);
+          const hurt = hero.hp < hero.maxHp;
+          return h('div', null,
+            companionCard(n, [
+              h('button', { class: `buy ${hero.points ? 'glow' : ''}`, onclick: () => { sheet.close(); openTalents(s, n.id, () => this.persist()); } }, hero.points ? `✦ Talents (${hero.points})` : '✦ Talents'),
+              h('button', { class: 'buy', disabled: !p.potions || !hurt, onclick: () => {
+                p.potions--;
+                const was = hero.hp;
+                hero.hp = Math.max(0, hero.hp);
+                const amt = heal(hero, rollDice(ph.n, ph.sides).reduce((a, b) => a + b, 0) + ph.bonus);
+                remember(n, `${p.name} shared a potion with them${was <= 0 ? ' when they had fallen' : ''}`);
+                sfx.heal();
+                toast(`${n.name} +${amt} HP`, 'good');
+                this.persist(); render();
+              } }, `🧪 Potion (${p.potions})`),
+              h('button', { class: 'link', onclick: () => {
+                if (!confirm(`Part ways with ${n.name}?`)) return;
+                n.inParty = false;
+                remember(n, `Parted ways with ${p.name} on day ${s.day}`);
+                this.persist(); render();
+              } }, 'Part ways'),
+            ]),
+            h('div', { class: 'comp-extra' },
+              h('div', { class: 'aff-bar' }, bar(n.affinity + 100, 200, 'aff', affinityLabel(n.affinity))),
+              n.memories.length ? h('ul', { class: 'mem' }, ...n.memories.slice(-3).map((m) => h('li', null, m))) : null));
+        }),
         others.length ? h('h3', null, 'People you\'ve met') : null,
         ...others.slice(-12).reverse().map((n) => h('div', { class: 'npc-mini' }, portraitEl(n.name, 36),
-          h('div', null, h('b', null, n.name), h('small', null, `${n.role} · met day ${n.metDay} · ${affinityLabel(n.affinity)}`)),
+          h('div', null, h('b', null, n.name), h('small', null, `${n.role} · ${CLASSES[n.hero?.cls ?? n.cls ?? classFor(n)].name}${n.hero ? ` Lv ${n.hero.level}` : ''} · met day ${n.metDay} · ${affinityLabel(n.affinity)}`)),
           n.affinity >= 30 && allies.length < 2 ? h('button', { class: 'buy', onclick: () => {
-            n.inParty = true;
-            track(s).recruits++;
-            s.stats.friends++;
-            log(s, `${n.name} rejoined the party`, 'friend');
-            this.persist(); render();
+            this.joinParty(n, `${n.name} rejoined the party`);
+            render();
           } }, 'Invite') : null)),
         h('button', { class: 'btn wide', onclick: () => sheet.close() }, 'Close'),
       );
@@ -1326,7 +1480,19 @@ function affinityLabel(a: number) {
   return 'Hostile';
 }
 
-function compareTo(p: GameState['player'], it: Item) {
+/** Hand a bag item to a companion: they equip it and their old piece goes in the bag. */
+function giveItem(p: GameState['player'], to: Hero, id: string) {
+  const idx = p.bag.findIndex((i) => i.id === id);
+  if (idx < 0) return;
+  const it = p.bag.splice(idx, 1)[0];
+  const cur = it.slot === 'weapon' ? to.weapon : it.slot === 'armor' ? to.armor : to.charm;
+  if (cur) p.bag.push(cur);
+  if (it.slot === 'weapon') to.weapon = it;
+  else if (it.slot === 'armor') to.armor = it;
+  else to.charm = it;
+}
+
+function compareTo(p: Hero, it: Item) {
   const cur = it.slot === 'weapon' ? p.weapon : it.slot === 'armor' ? p.armor : p.charm;
   if (!cur) return 'new slot!';
   const score = (x: Item) => (x.slot === 'weapon' ? (x.die ?? 6) / 2 + x.plus * 1.5 : x.plus);
@@ -1334,3 +1500,5 @@ function compareTo(p: GameState['player'], it: Item) {
   return d > 0 ? '▲ upgrade' : d < 0 ? '▼ weaker' : '= similar';
 }
 
+
+const classFor = (n: NPC) => classForRole(n.role, n.name);

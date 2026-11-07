@@ -1,8 +1,9 @@
 // Applies mechanical consequences of choices. The LLM never decides these.
-import { d, gainXp, heal, randomItem, takeItem, rollDice, itemDesc, type D20Roll } from './rules';
+import { d, gainXp, heal, randomItem, rollDice, itemDesc, type D20Roll } from './rules';
 import { randInt } from './rng';
 import { spiral, key } from './hex';
 import { addNpc, party, reveal, hasOmen } from './state';
+import { partyMods, stowLoot, lootNote } from './companions';
 import type { Choice, GameEvent, GameState, Item, NPC } from './types';
 
 export interface Effects {
@@ -36,16 +37,15 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
     let xp = 12 * tier * mult;
     switch (choice.reward) {
       case 'gold': {
-        const g = Math.round((randInt(5, 10) * tier + Math.max(0, (choice.dc ?? 10) - 10)) * mult * (hasOmen(s, 'golden-hour') ? 1.5 : 1));
+        const g = Math.round((randInt(5, 10) * tier + Math.max(0, (choice.dc ?? 10) - 10)) * mult * (hasOmen(s, 'golden-hour') ? 1.5 : 1) * goldMult(s));
         p.gold += g;
         fx.lines.push(`+${g} gold`);
         break;
       }
       case 'item': {
         const it = randomItem(p, tier + (roll.crit ? 1 : 0));
-        const eq = takeItem(p, it);
         fx.item = it;
-        fx.lines.push(`${it.name} (${itemDesc(it)})${eq ? ' — equipped!' : ''}`);
+        fx.lines.push(`${it.name} (${itemDesc(it)})${lootNote(stowLoot(s, it))}`);
         break;
       }
       case 'ally': {
@@ -58,8 +58,13 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
         break;
       }
       case 'heal': {
-        const h = heal(p, roll.crit ? p.maxHp : rollDice(2, 6).reduce((a, b) => a + b, 0) + tier * 2);
+        const amount = roll.crit ? p.maxHp : rollDice(2, 6).reduce((a, b) => a + b, 0) + tier * 2;
+        const h = heal(p, amount);
         fx.lines.push(`+${h} HP`);
+        // The whole party shares the rest.
+        let ph = 0;
+        for (const n of party(s)) if (n.hero) ph += heal(n.hero, amount);
+        if (ph) fx.lines.push(`Party +${ph} HP`);
         if (p.potions < 5 && roll.crit) { p.potions++; fx.lines.push('+1 potion'); }
         break;
       }
@@ -114,18 +119,21 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
   return fx;
 }
 
+/** Gold multiplier from talents such as Light Fingers and Legend. */
+export const goldMult = (s: GameState) => 1 + (partyMods(s).gold ?? 0) / 100;
+
 export function questRewards(s: GameState, tier: number): Effects {
   const p = s.player;
-  const g = 25 * tier + randInt(0, 15);
+  const g = Math.round((25 * tier + randInt(0, 15)) * goldMult(s));
   p.gold += g;
   const it = randomItem(p, tier + 1);
-  const eq = takeItem(p, it);
+  const who = stowLoot(s, it);
   const xp = 90 * tier;
   const levels = gainXp(p, xp);
   p.potions = Math.min(6, p.potions + 1);
   p.inspiration = true;
   return {
-    lines: [`+${xp} XP`, `+${g} gold`, `${it.name} (${itemDesc(it)})${eq ? ' — equipped!' : ''}`, '+1 potion', '✨ Inspiration'],
+    lines: [`+${xp} XP`, `+${g} gold`, `${it.name} (${itemDesc(it)})${lootNote(who)}`, '+1 potion', '✨ Inspiration'],
     levels, recruit: null, npc: null, item: it, questComplete: true,
   };
 }

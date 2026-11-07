@@ -33,19 +33,32 @@ export interface Item {
   desc?: string;
 }
 
-export interface Player {
-  name: string;
+/**
+ * Everything that fights: the player and every companion share this shape,
+ * so the same rules (AC, attack, checks, levelling, talents) apply to both.
+ */
+export interface Hero {
   cls: ClassId;
   level: number;
   xp: number;
   hp: number;
   maxHp: number;
   stats: Record<Stat, number>;
-  gold: number;
-  potions: number;
   weapon: Item;
   armor: Item;
   charm: Item | null;
+  /** learned talent node ids */
+  talents: string[];
+  /** unspent talent points */
+  points: number;
+  /** pending ability score increases (+2 to a stat) still to be chosen */
+  asi: number;
+}
+
+export interface Player extends Hero {
+  name: string;
+  gold: number;
+  potions: number;
   bag: Item[];
   inspiration: boolean;
 }
@@ -61,8 +74,12 @@ export interface NPC {
   metDay: number;
   where: string;
   inParty: boolean;
-  /** companion level-ish power */
-  power: number;
+  /** combat sheet: class, level, HP, gear and talents (created when they first join) */
+  hero?: Hero;
+  /** class they'll have when they join (from the story, or guessed from their role) */
+  cls?: ClassId;
+  /** @deprecated pre-talent saves: companion strength, migrated into `hero` */
+  power?: number;
 }
 
 export interface Quest {
@@ -141,7 +158,7 @@ export interface Choice {
   enemy?: EnemySpec;
 }
 
-export interface NpcSpec { name: string; role: string; look: string; personality: string }
+export interface NpcSpec { name: string; role: string; look: string; personality: string; cls?: ClassId }
 
 export interface GameEvent {
   title: string;
@@ -173,6 +190,8 @@ export interface Track {
   deathSaves: number;
   recruits: number;
   sword: boolean;
+  /** companions who have learned at least one talent you picked */
+  mentored?: number;
 }
 
 export interface PendingFight {

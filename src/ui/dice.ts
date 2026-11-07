@@ -94,6 +94,8 @@ export interface CheckOptions {
   onRoll?: (roll: D20Roll, usedInspiration: boolean) => void;
   /** fired when the die lands (after the animation) */
   onLanded?: (roll: D20Roll) => void;
+  /** reroll natural 1s (the Lucky talent) */
+  lucky?: boolean;
   /** optional extra control shown with the result (e.g. share a natural 20) */
   extra?: (roll: D20Roll) => HTMLElement | null;
 }
@@ -158,7 +160,7 @@ export function rollCheck(opts: CheckOptions): Promise<{ roll: D20Roll; usedInsp
       rolled = true;
       hint.textContent = '';
       inspireBtn?.remove();
-      const roll = opts.roll ?? rollD20(opts.bonus, opts.dc, adv, opts.parts);
+      const roll = opts.roll ?? rollD20(opts.bonus, opts.dc, adv, opts.parts, { lucky: opts.lucky });
       opts.onRoll?.(roll, usedInspiration);
       // A harder flick tumbles longer; reduced motion keeps it brief.
       const ms = reducedMotion() ? 300 : Math.round(1100 * Math.max(0.85, Math.min(1.6, power)));
@@ -194,6 +196,7 @@ export function rollCheck(opts: CheckOptions): Promise<{ roll: D20Roll; usedInsp
       result.append(
         h('div', { class: 'math' }, `${roll.kept} ${roll.bonus ? fmtMod(roll.bonus) : ''} = `, h('b', null, String(roll.total)), ` vs ${roll.dc}`),
         h('div', { class: 'verdict' }, verdict),
+        ...(roll.lucky ? [h('div', { class: 'lucky-note' }, '🍀 Lucky! A natural 1 was rerolled.')] : []),
       );
       const close = () => {
         overlay.classList.remove('open');

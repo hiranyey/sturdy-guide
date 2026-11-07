@@ -3,6 +3,7 @@ import { sfx } from './audio';
 import { openSettings } from './settings-sheet';
 import { d20Svg } from './dice';
 import { CLASSES, fmtMod, mod } from '../core/rules';
+import { TREES } from '../core/talents';
 import { load } from '../core/state';
 import { npcName } from '../core/content';
 import { aiEnabled } from '../ai/settings';
@@ -70,6 +71,7 @@ export function showCreate(onBegin: (name: string, cls: ClassId, tone: Tone) => 
       h('div', { class: 'mini-stats' }, ...STATS.map((st) => h('span', { class: c.prof.includes(st) ? 'prof' : '' }, h('small', null, st.toUpperCase()), h('b', null, fmtMod(mod(c.stats[st])))))),
       h('p', { class: 'cd-ability' }, h('b', null, `💥 ${c.ability.name}: `), c.ability.desc),
       h('p', { class: 'cd-ability' }, `🗡️ ${c.weapon.name} (d${c.weapon.die}) · 🛡️ ${c.armor.name}`),
+      h('p', { class: 'cd-ability cd-paths' }, h('b', null, 'Talent paths: '), TREES[cls].branches.map((b) => `${b.icon} ${b.name}`).join(' · ')),
     );
   };
   renderClasses();
