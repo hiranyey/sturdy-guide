@@ -898,3 +898,9 @@ body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-
 .sheet-body > .turn-card { color: var(--text); border-color: rgba(180,139,224,0.5); }
 .sheet-body > .turn-card .turn-eyebrow { color: #c9a8ff; }
 .sheet-body > .turn-card.bad .turn-eyebrow { color: #ff9b8f; }
+
+/* ---------- Blocked ways (blocks.ts) ---------- */
+.block-card { text-align: center; }
+.block-card .choices { text-align: left; }
+.block-icon { font-size: 3rem; line-height: 1; margin: 6px auto 2px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.35)); animation: pop 0.45s cubic-bezier(.2,1.5,.4,1); }
+.block-why { color: #6b47b8; font-size: 0.9rem; margin: 0 0 6px; }

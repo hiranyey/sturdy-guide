@@ -4,6 +4,7 @@ import { setAmbience, CAMP_AMBIENCE, type SceneCtx } from './ambience';
 import { edgeScene, edgeMood } from './edges';
 import { setWeather } from './weather-fx';
 import { weatherAt, WEATHER_INFO, type Weather } from '../core/weather';
+import { blockAt, canEnter, placeBlocks, clearBlock, expireBlocks, BLOCK_INFO } from '../core/blocks';
 import { speak, stopSpeech, announce } from './prefs';
 import { hint, dismissHint } from './hints';
 import { offerInstall } from './install';
@@ -198,7 +199,7 @@ export class Game {
     // Same order of precedence as enterTile: an unresolved place, else a landmark scene.
     for (const hx of spiral(s.pos, 2)) {
       const d = distance(s.pos, hx);
-      if (d === 0 || (quest && eq(hx, quest.target))) continue;
+      if (d === 0 || (quest && eq(hx, quest.target)) || blockAt(s, hx)) continue;
       const k = key(hx);
       const poi = poiAt(hx, s.seed);
       if (poi && poi !== 'start' && !s.tiles[k]?.done) {
@@ -294,6 +295,8 @@ export class Game {
     if (poi && poi !== 'start') rows.push(['Place', `${POI_LABEL[poi] ?? poi}${mem.done ? ' ✓ visited' : ''}`]);
     if (lm) rows.push(['Landmark', `${LANDMARKS[lm].icon} ${LANDMARKS[lm].name}${mem.lm ? ' ✓' : ''}`]);
     if (riverAt(hx, s.seed)) rows.push(['Water', '🌊 Stream (fordable)']);
+    const bl = blockAt(s, hx);
+    if (bl) rows.push(['Blocked', `${BLOCK_INFO[bl.kind].icon} ${bl.reason}${bl.until !== undefined ? ` (until day ${bl.until + 1})` : ''}`]);
     rows.push(['Danger', '☠'.repeat(tierAt(hx))]);
     rows.push(['Move cost', info.passable ? `${info.cost} 🔥` : 'Impassable']);
     rows.push(['Distance', `${distance(s.pos, hx)} hex`]);
@@ -488,7 +491,16 @@ export class Game {
       this.setTicker('Deep water blocks the way.');
       return;
     }
-    const path = findPath(s.pos, target, s.seed, (hx) => !!s.revealed[key(hx)]);
+    const blocked = blockAt(s, target);
+    if (blocked) {
+      this.map.flashTile(target, false);
+      if (distance(s.pos, target) === 1) {
+        this.busy = true;
+        try { await this.openBlock(target); } finally { this.busy = false; }
+      } else this.setTicker(`${BLOCK_INFO[blocked.kind].icon} ${blocked.reason} Get next to it to deal with it.`);
+      return;
+    }
+    const path = findPath(s.pos, target, s.seed, (hx) => !!s.revealed[key(hx)] && canEnter(s, hx));
     if (!path || !path.length) {
       this.map.flashTile(target, false);
       this.setTicker('No known path leads there.');
@@ -509,6 +521,10 @@ export class Game {
   private async travel(path: Hex[]) {
     const s = this.s;
     for (const step of path) {
+      if (!canEnter(s, step)) {
+        this.setTicker(`${BLOCK_INFO[blockAt(s, step)!.kind].icon} The way ahead is blocked.`);
+        break;
+      }
       const cost = moveCost(step, s.seed);
       if (s.stamina < cost) {
         toast(`Not enough torches to cross ${BIOME_INFO[biomeAt(step, s.seed)].name} (${cost} 🔥).`, 'bad');
@@ -969,6 +985,10 @@ export class Game {
         if (ctx.landmark === 'sword_stone' && stat === 'str' && r.success) track(s).sword = true;
         if (usedInsp) p.inspiration = false;
         fx = applyCheck(s, ev, c, r, ctx.tier, ctx.regionName, isQuest);
+        if (r.fumble && !isQuest) {
+          const slip = this.fumbleBlock(ctx, stat);
+          if (slip) fx.lines.push(slip);
+        }
         outcomeP = ahead ? ahead[r.success ? 0 : 1] : genOutcome(s, ev, c, { success: r.success, crit: r.crit, fumble: r.fumble, effects: fx.lines });
       },
     });
@@ -987,6 +1007,10 @@ export class Game {
     }
     // The hero's own idea at a special moment changes the story, whichever way the die fell.
     const turn = c.custom ? this.recordTurn(ev, c, ctx, roll.success, outcome.turn) : null;
+    if (turn && outcome.block) {
+      const closed = placeBlocks(s, ctx.hex, outcome.block.kind, outcome.block.reason, { here: outcome.block.here, count: outcome.block.here ? 1 : 2, turn: turn.title });
+      if (closed.length) effects.lines.push(`${BLOCK_INFO[outcome.block.kind].icon} The way is blocked`);
+    }
     this.persist();
     const rollLine = `🎲 ${roll.kept}${fmtMod(roll.bonus)} = ${roll.total} vs DC ${roll.dc}`;
     await this.outcomeBlock(card, choicesEl, outcome.text, effects.lines, roll.success, sheet, rollLine, roll.crit, roll.fumble, effects, turn);
@@ -1047,6 +1071,84 @@ export class Game {
     } else {
       actions.append(h('button', { class: 'btn btn-primary wide', onclick: () => sheet.close() }, 'Continue'));
     }
+  }
+
+  /** A natural 1 on a physical check in rough country can close a way behind you. */
+  private fumbleBlock(ctx: EventContext, stat: Stat): string | null {
+    if (!['str', 'dex', 'con'].includes(stat)) return null;
+    const s = this.s;
+    const [kind, reason]: [import('../core/blocks').BlockKind, string] | [null, string] =
+      ctx.biome === 'mountain' || ctx.biome === 'hills' ? ['rockfall', 'A rockslide you set off chokes the way.']
+      : ctx.biome === 'snow' ? ['ice', 'The slope you scrambled down has glazed into black ice.']
+      : [null, ''];
+    if (!kind) return null;
+    return placeBlocks(s, ctx.hex, kind, reason).length ? `${BLOCK_INFO[kind].icon} ${BLOCK_INFO[kind].name} nearby` : null;
+  }
+
+  /** Next to a blocked hex: try to clear it (a torch of hard work and a check), pay, or leave it. */
+  private async openBlock(hx: Hex) {
+    const s = this.s, p = s.player;
+    const b = blockAt(s, hx);
+    if (!b) return;
+    const info = BLOCK_INFO[b.kind];
+    const tier = tierAt(hx);
+    const sheet = new Sheet('event', { dismissable: true });
+    const choices = h('div', { class: 'choices' });
+    const note = h('p', { class: 'muted small center' });
+    sheet.set(h('div', { class: 'parchment block-card' },
+      h('div', { class: 'block-icon', 'aria-hidden': 'true' }, info.icon),
+      h('div', { class: 'ev-kind' }, `Blocked way · ${this.regionName(hx)}`),
+      h('h2', { class: 'ev-title' }, info.name),
+      h('p', { class: 'ev-text' }, b.reason),
+      b.turn ? h('p', { class: 'block-why' }, `⚡ Because of: ${b.turn}`) : null,
+      b.weather ? h('p', { class: 'muted small' }, 'It will fall when the storm passes.')
+        : b.until !== undefined ? h('p', { class: 'muted small' }, `It should clear by day ${b.until + 1}.`) : null,
+      choices, note));
+    const done = (msg: string, kind: 'good' | 'bad' | 'info') => { toast(msg, kind); sheet.close(); this.persist(); };
+    if (info.stat && !b.weather) {
+      const dc = Math.min(20, info.dc + tier - 1);
+      const c: Choice = { label: `${info.verb} (1 🔥)`, kind: 'check', stat: info.stat, dc };
+      const btn = this.choiceButton(c, async () => {
+        if (s.stamina < 1) { note.textContent = 'You need a torch of daylight for the work. Camp first.'; sfx.deny(); return; }
+        s.stamina -= 1;
+        this.renderHud();
+        const cb = heroCheck(s, info.stat!);
+        const { roll } = await rollCheck({
+          title: `${STAT_NAMES[info.stat!]} check`, subtitle: info.verb, dc, bonus: cb.total, parts: cb.parts,
+          canInspire: p.inspiration, lucky: partyMods(s).lucky,
+          onRoll: (_r, usedInsp) => { if (usedInsp) p.inspiration = false; },
+        });
+        if (roll.success) {
+          clearBlock(s, hx);
+          const levels = gainXp(p, 6 * tier);
+          log(s, `cleared the ${info.name.toLowerCase()} (${b.reason.replace(/\.$/, '')})`, 'event');
+          done(`${info.icon} The way is open! +${6 * tier} XP`, 'good');
+          this.map.invalidate(400);
+          if (levels) await this.levelUp(levels);
+        } else if (['str', 'dex', 'con'].includes(info.stat!)) {
+          const dmg = Math.min(p.hp - 1, rollDice(1, 4)[0] + tier - 1);
+          p.hp -= Math.max(0, dmg);
+          done(dmg > 0 ? `It won't budge, and it costs you (-${dmg} HP).` : 'It won\'t budge.', 'bad');
+        } else {
+          done('No luck. The way stays shut.', 'bad');
+        }
+      });
+      choices.append(btn);
+    }
+    if (b.kind === 'guards' || b.kind === 'barricade') {
+      const toll = 8 * tier;
+      choices.append(this.choiceButton({ label: `Pay ${toll} gold to pass`, kind: 'trade' }, () => {
+        if (p.gold < toll) { note.textContent = `You have only ${p.gold} gold.`; sfx.deny(); return; }
+        p.gold -= toll;
+        clearBlock(s, hx);
+        sfx.sell();
+        log(s, `paid ${toll} gold to get past the ${info.name.toLowerCase()}`, 'event');
+        done(`🪙 You pay ${toll} gold. The way is open.`, 'info');
+        this.map.invalidate(400);
+      }));
+    }
+    choices.append(this.choiceButton({ label: 'Leave it for now', kind: 'leave' }, () => sheet.close()));
+    await sheet.done;
   }
 
   /** Write down a turning point: the AI's account of what changed, or a plain one without AI. */
@@ -1647,6 +1749,7 @@ export class Game {
     this.healParty();
     stopSpeech();
     const omen = startDay(s);
+    expireBlocks(s);
     trackSeen(s, 'omens', omen.id);
     this.setScene();
     sfx.dawn();

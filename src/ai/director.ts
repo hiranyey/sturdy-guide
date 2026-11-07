@@ -13,6 +13,7 @@ import { STATS } from '../core/types';
 import { LANDMARKS, type LandmarkKind } from '../core/terrain';
 import { talent } from '../core/talents';
 import { weatherAt, WEATHER_INFO } from '../core/weather';
+import { BLOCK_KINDS, blocksNear, type BlockKind } from '../core/blocks';
 import type {
   Biome, Choice, ClassId, EnemyKind, EventContext, GameEvent, GameState, NpcSpec, RegionInfo, RewardKind, Stat, Tone,
 } from '../core/types';
@@ -47,6 +48,7 @@ function storyContext(s: GameState) {
     recent_events: s.log.slice(-6).map((l) => l.text),
     // the hero's own choices that changed the world: honour them
     turning_points: (s.turns ?? []).slice(-5).map((t) => `${t.title}: ${t.text} (${t.where}, day ${t.day})`),
+    blocked_ways_nearby: blocksNear(s),
   };
 }
 
@@ -213,7 +215,12 @@ Rules: offer genuinely different approaches using DIFFERENT stats; make choices 
 }
 
 // ---------- Outcome ----------
-export interface Outcome { text: string; memory: string | null; flag: string | null; turn?: { title: string; text: string } | null }
+export interface Outcome {
+  text: string; memory: string | null; flag: string | null;
+  turn?: { title: string; text: string } | null;
+  /** a way the turning point physically closed */
+  block?: { kind: BlockKind; reason: string; here: boolean } | null;
+}
 
 /**
  * Narration for a check's result. With `approx`, it's being written before the
@@ -233,9 +240,12 @@ ${approx
   : `Mechanical effects already applied: ${result.effects.join(', ') || 'none'}.`}
 Context: ${JSON.stringify({ story_so_far: s.summary.slice(-300), companions: party(s).map((n) => n.name), weather: WEATHER_INFO[weatherAt(s.seed, s.day, s.pos)].prompt })}
 JSON: {"text": "25-55 words narrating what happens, consistent with the result and effects", "memory": ${ev.npc ? `"what ${ev.npc.name} will remember about this, max 12 words"` : 'null'}, "flag": "a lasting world fact this created, max 10 words, or null"${choice.custom ? `,
- "turn": {"title": "2-5 words naming this turning point", "consequence": "max 22 words: what is different in the world from now on because of what the hero did (success or failure); something that can matter later"}` : ''}}`, choice.custom ? 340 : 260);
+ "turn": {"title": "2-5 words naming this turning point", "consequence": "max 22 words: what is different in the world from now on because of what the hero did (success or failure); something that can matter later"},
+ "block": null, or ONLY if what happened would physically close a way through the land (a bridge burned, a garrison now bars the road, a tunnel caved in, a ward raised, a fire spreading): {"kind": "rockfall|fire|flood|guards|thorns|ice|curse|barricade|collapse", "reason": "max 14 words, what now blocks the way", "where": "here|nearby"}. Usually null.` : ''}}`, choice.custom ? 380 : 260);
     const turn = choice.custom && clip(out.turn?.consequence, 160) ? { title: clip(out.turn?.title, 40, ev.title), text: clip(out.turn?.consequence, 160) } : null;
-    return { text: clip(out.text, 420, fb.text), memory: clip(out.memory, 100) || null, flag: clip(out.flag, 90) || null, turn };
+    const block = choice.custom && BLOCK_KINDS.includes(out.block?.kind) && clip(out.block?.reason, 120)
+      ? { kind: out.block.kind as BlockKind, reason: clip(out.block.reason, 120), here: out.block.where === 'here' } : null;
+    return { text: clip(out.text, 420, fb.text), memory: clip(out.memory, 100) || null, flag: clip(out.flag, 90) || null, turn, block };
   } catch {
     return fb;
   }

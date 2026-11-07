@@ -140,6 +140,8 @@ export interface GameState {
   pending?: { ctx: EventContext; ev: GameEvent } | null;
   /** a fight that was in progress when the app closed; restarted on resume */
   pendingFight?: PendingFight | null;
+  /** hexes closed for story reasons, by "q,r" (src/core/blocks.ts) */
+  blocks?: Record<string, import('./blocks').Block>;
   /** turning points: lasting consequences of the hero's own ideas at special moments */
   turns?: Turn[];
   /** encounters written ahead of time for nearby tiles, plus spares to reuse (src/ai/foresight.ts) */

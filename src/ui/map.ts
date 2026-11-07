@@ -3,6 +3,7 @@ import { biomeAt, poiAt, isPassable, moveCost, visionRadius } from '../core/worl
 import { mulberry32, hash2 } from '../core/rng';
 import { CLASSES } from '../core/rules';
 import { party } from '../core/state';
+import { blockAt, canEnter, BLOCK_INFO } from '../core/blocks';
 import type { Biome, GameState, PoiKind } from '../core/types';
 import { styleAt, riverMask, riverAt, landmarkAt } from '../core/terrain';
 import { reducedMotion } from './prefs';
@@ -10,6 +11,41 @@ import { hexPath, palette, decorate, drawRiver, riverSegments, drawLandmark, wat
 
 
 // ---------- POI icons ----------
+/** A closed hex: darkened, hatched, a pulsing red rim and what's in the way. */
+function drawBlock(ctx: Ctx, icon: string, x: number, y: number, s: number, t: number) {
+  ctx.save();
+  hexPath(ctx, x, y, s - 2);
+  ctx.fillStyle = 'rgba(30,8,8,0.32)';
+  ctx.fill();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+  ctx.lineWidth = s * 0.07;
+  ctx.beginPath();
+  for (let i = -3; i <= 3; i++) {
+    const o = i * s * 0.32;
+    ctx.moveTo(x + o - s, y + s);
+    ctx.lineTo(x + o + s, y - s);
+  }
+  ctx.stroke();
+  ctx.restore();
+  hexPath(ctx, x, y, s - 2.5);
+  ctx.strokeStyle = `rgba(255,96,72,${0.55 + 0.25 * Math.sin(t / 420)})`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.filter = 'none';
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.font = `${Math.round(s * 0.62)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = '#fff4dc'; // only shows where no colour-emoji font exists
+  ctx.fillText(icon, x, y - s * 0.04);
+  ctx.restore();
+}
+
 function drawPoi(ctx: Ctx, kind: PoiKind | 'quest', x: number, y: number, s: number, t: number) {
   ctx.save();
   ctx.translate(x, y);
@@ -620,10 +656,11 @@ export class MapView {
     const vision = visionRadius(s.pos, s.seed);
     const pad = size * this.dpr * 0.9;
     const reach = new Set(
-      neighbors(s.pos).filter((n) => isPassable(n, s.seed) && moveCost(n, s.seed) <= s.stamina).map(key),
+      neighbors(s.pos).filter((n) => isPassable(n, s.seed) && moveCost(n, s.seed) <= s.stamina && (this.demo || canEnter(s, n))).map(key),
     );
 
     const pois: { kind: PoiKind | 'quest'; x: number; y: number; done: boolean }[] = [];
+    const blocked: { icon: string; x: number; y: number }[] = [];
     for (let r = rMin; r <= rMax; r++) {
       const qMin = Math.floor((this.cam.x - this.w / 2) / sw - r / 2) - 2;
       const qMax = Math.ceil((this.cam.x + this.w / 2) / sw - r / 2) + 2;
@@ -659,6 +696,8 @@ export class MapView {
           ctx.fillStyle = 'rgba(10,12,30,0.32)';
           ctx.fill();
         }
+        const bl = this.demo ? null : blockAt(s, hx);
+        if (bl) blocked.push({ icon: BLOCK_INFO[bl.kind].icon, x, y });
         const poi = poiAt(hx, s.seed);
         const isQuest = s.quest && s.quest.target.q === q && s.quest.target.r === r;
         if (isQuest) pois.push({ kind: 'quest', x, y, done: false });
@@ -687,6 +726,8 @@ export class MapView {
         ctx.fillText('✓', p.x + size * 0.38, p.y - size * 0.34);
       }
     }
+
+    for (const b of blocked) drawBlock(ctx, b.icon, b.x, b.y, size, t);
 
     // tap flash
     if (this.flash) {
