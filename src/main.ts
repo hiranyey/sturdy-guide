@@ -10,6 +10,7 @@ import { fitViewport } from './ui/viewport';
 import { setMood } from './ui/music';
 import { setAmbience, TITLE_AMBIENCE } from './ui/ambience';
 import { edgeMood } from './ui/edges';
+import { setWeather } from './ui/weather-fx';
 import { createGame, load, save, reveal } from './core/state';
 import { finishOAuth } from './ai/openrouter';
 import { genPremise } from './ai/director';
@@ -57,6 +58,7 @@ function title() {
   document.body.classList.add('at-title');
   setMood('title');
   setAmbience(TITLE_AMBIENCE);
+  setWeather('clear');
   edgeMood('title');
   showTitle({
     onContinue: () => {

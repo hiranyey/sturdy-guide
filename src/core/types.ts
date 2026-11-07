@@ -179,6 +179,8 @@ export interface Foreseen {
   party: string[];
   /** quest it was written for (quest climaxes only) */
   quest?: string;
+  /** weather on that tile when it was written (the scene may describe it) */
+  weather?: string;
 }
 
 export interface ForesightStore {

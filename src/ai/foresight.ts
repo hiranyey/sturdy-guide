@@ -11,6 +11,7 @@
 // stranger on the plains).
 import { distance } from '../core/hex';
 import { party } from '../core/state';
+import { weatherAt } from '../core/weather';
 import type { EventContext, Foreseen, ForesightStore, GameEvent, GameState } from '../core/types';
 import { genEventAi, sanitizeEvent } from './director';
 import { aiEnabled, settings } from './settings';
@@ -48,6 +49,8 @@ const npcByName = (s: GameState, name: string) => Object.values(s.npcs).find((n)
 export function fits(f: Foreseen, s: GameState, ctx: EventContext): boolean {
   if (s.day - f.day > STALE_DAYS) return false;
   if (ctx.poi === 'quest' && f.quest !== s.quest?.title) return false;
+  // a rainy scene shouldn't play under a clear sky
+  if (f.weather && f.weather !== weatherAt(s.seed, s.day, ctx.hex)) return false;
   const returning = f.ctx.returningNpc;
   if (returning) {
     const now = npcByName(s, returning.name);
@@ -205,7 +208,10 @@ export class Foresight {
     } catch {
       return; // offline or the model hiccuped: the tile will be written live when reached
     }
-    const f: Foreseen = { ctx, ev, day: s.day, party: party(s).map((n) => n.name), quest: ctx.poi === 'quest' ? s.quest?.title : undefined };
+    const f: Foreseen = {
+      ctx, ev, day: s.day, party: party(s).map((n) => n.name), quest: ctx.poi === 'quest' ? s.quest?.title : undefined,
+      weather: weatherAt(s.seed, s.day, ctx.hex),
+    };
     const st = store(s);
     if (slot.startsWith('wild:')) toPool(st, f);
     else st.spots[w.key] = f;

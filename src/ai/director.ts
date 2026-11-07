@@ -12,6 +12,7 @@ import { pick } from '../core/rng';
 import { STATS } from '../core/types';
 import { LANDMARKS, type LandmarkKind } from '../core/terrain';
 import { talent } from '../core/talents';
+import { weatherAt, WEATHER_INFO } from '../core/weather';
 import type {
   Biome, Choice, ClassId, EnemyKind, EventContext, GameEvent, GameState, NpcSpec, RegionInfo, RewardKind, Stat, Tone,
 } from '../core/types';
@@ -187,6 +188,7 @@ export async function genEventAi(s: GameState, ctx: EventContext): Promise<GameE
   {
     const raw = await ask<any>(s, `Create the next encounter.
 Location: ${POI_GUIDE[ctx.poi] ?? POI_GUIDE.wild}. Terrain: ${ctx.terrain ?? BIOME_INFO[ctx.biome].name}. Region: ${ctx.regionName}. Danger tier ${ctx.tier}/5.
+Weather: ${WEATHER_INFO[weatherAt(s.seed, s.day, ctx.hex)].prompt}. Unless it's clear, let it colour the scene.
 ${ctx.landmark ? `The scene is built around a landmark standing here: ${LANDMARKS[ctx.landmark as LandmarkKind].name} — ${LANDMARKS[ctx.landmark as LandmarkKind].lore[0]} Make the landmark central to the encounter and its choices.` : ''}
 ${returning}
 Context: ${JSON.stringify(storyContext(s))}
@@ -207,7 +209,12 @@ Rules: offer genuinely different approaches using DIFFERENT stats; make choices 
 // ---------- Outcome ----------
 export interface Outcome { text: string; memory: string | null; flag: string | null }
 
-export async function genOutcome(s: GameState, ev: GameEvent, choice: Choice, result: { success: boolean; crit: boolean; fumble: boolean; effects: string[] }): Promise<Outcome> {
+/**
+ * Narration for a check's result. With `approx`, it's being written before the
+ * dice land (one version for success, one for failure), so the effects are a
+ * close guess and the text must stay general about them.
+ */
+export async function genOutcome(s: GameState, ev: GameEvent, choice: Choice, result: { success: boolean; crit: boolean; fumble: boolean; effects: string[] }, approx = false): Promise<Outcome> {
   const fb: Outcome = { text: fallbackOutcome(choice.reward, result.success, result.crit, result.fumble), memory: null, flag: null };
   if (!aiEnabled()) return fb;
   try {
@@ -215,8 +222,10 @@ export async function genOutcome(s: GameState, ev: GameEvent, choice: Choice, re
 Scene: ${JSON.stringify({ title: ev.title, text: ev.text, npc: ev.npc?.name ?? null })}
 Choice: "${choice.label}" (${choice.stat?.toUpperCase() ?? ''} check vs DC ${choice.dc ?? '-'}).
 Dice result (FINAL, do not contradict): ${result.crit ? 'CRITICAL SUCCESS (natural 20)' : result.fumble ? 'CRITICAL FAILURE (natural 1)' : result.success ? 'SUCCESS' : 'FAILURE'}.
-Mechanical effects already applied: ${result.effects.join(', ') || 'none'}.
-Context: ${JSON.stringify({ story_so_far: s.summary.slice(-300), companions: party(s).map((n) => n.name) })}
+${approx
+  ? `Likely mechanical effects (exact amounts and items may differ, so mention them only in general terms: no numbers, no item names): ${result.effects.join(', ') || 'none'}.`
+  : `Mechanical effects already applied: ${result.effects.join(', ') || 'none'}.`}
+Context: ${JSON.stringify({ story_so_far: s.summary.slice(-300), companions: party(s).map((n) => n.name), weather: WEATHER_INFO[weatherAt(s.seed, s.day, s.pos)].prompt })}
 JSON: {"text": "25-55 words narrating what happens, consistent with the result and effects", "memory": ${ev.npc ? `"what ${ev.npc.name} will remember about this, max 12 words"` : 'null'}, "flag": "a lasting world fact this created, max 10 words, or null"}`, 260);
     return { text: clip(out.text, 420, fb.text), memory: clip(out.memory, 100) || null, flag: clip(out.flag, 90) || null };
   } catch {

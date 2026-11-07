@@ -2,7 +2,10 @@ import { h, $, Sheet, modal, toast, typewrite, wait, bar, vibrate, longPress, po
 import { setMood, scene, stinger } from './music';
 import { setAmbience, CAMP_AMBIENCE, type SceneCtx } from './ambience';
 import { edgeScene, edgeMood } from './edges';
+import { setWeather } from './weather-fx';
+import { weatherAt, WEATHER_INFO, type Weather } from '../core/weather';
 import { speak, stopSpeech, announce } from './prefs';
+import { hint, dismissHint } from './hints';
 import { offerInstall } from './install';
 import { shareCard } from './share';
 import { checkAchievements, trackSeen, track, ACHIEVEMENTS, achievementCount, type AchievementDef } from '../core/achievements';
@@ -22,7 +25,7 @@ import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pick
 import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen } from '../core/state';
 import {
   CLASSES, armorClass, attackBonus, fmtMod, mod, xpForNext, XP_LEVELS, heal, randomItem, itemDesc,
-  equip, sellValue, profBonus, rollDice, gainXp, successChance, raiseStat,
+  equip, sellValue, profBonus, rollDice, gainXp, successChance, raiseStat, type D20Roll,
 } from '../core/rules';
 import { heroCheck, partyMods, ensureHero, syncParty, unspent, classForRole, stowLoot, lootNote } from '../core/companions';
 import { ABILITIES, abilitiesOf, TREES, ROW_LEVEL, type AbilityId } from '../core/talents';
@@ -46,6 +49,11 @@ const POI_LABEL: Record<string, string> = {
 export class Game {
   private busy = false;
   private calm = 1;
+  /** steps taken this session, for the long-press tip */
+  private walked = 0;
+  /** weather where the hero stands, and a line announcing a change */
+  private weather: Weather | null = null;
+  private weatherNews = '';
   private hud = $('#hud');
   private dock = $('#dock');
   private mapUi = $('#map-ui');
@@ -54,7 +62,7 @@ export class Game {
   constructor(public s: GameState, private map: MapView, private onQuit: () => void) {
     map.demo = false;
     map.onTap = (hex) => this.onTap(hex);
-    map.onLongPress = (hex, x, y) => this.tileInfo(hex, x, y);
+    map.onLongPress = (hex, x, y) => { dismissHint('inspect'); this.tileInfo(hex, x, y); };
     map.onFollowChange = (f) => this.mapUi.classList.toggle('free-cam', !f);
     map.snapTo(s.pos);
     this.buildChrome();
@@ -125,8 +133,14 @@ export class Game {
       ),
       h('div', { class: 'hud-row row2' },
         h('div', { class: 'torches', title: 'Torches: each step burns one. Camp to end the day.' }, ...torches),
-        h('button', { class: 'day', onclick: () => { const o = this.omen(); if (o) toast(`${o.icon} ${o.name}: ${o.desc}`, 'gold', 3500); } },
-          this.omen() ? h('span', { class: 'omen' }, this.omen()!.icon) : null, `Day ${s.day}`),
+        h('button', { class: 'day', onclick: () => {
+          const o = this.omen(), w = WEATHER_INFO[weatherAt(s.seed, s.day, s.pos)];
+          toast(`${w.icon} ${w.name} over ${this.regionName(s.pos)}`, 'info', 3000);
+          if (o) toast(`${o.icon} ${o.name}: ${o.desc}`, 'gold', 3500);
+        } },
+          this.omen() ? h('span', { class: 'omen' }, this.omen()!.icon) : null,
+          this.weather && this.weather !== 'clear' ? h('span', { class: 'wx' }, WEATHER_INFO[this.weather].icon) : null,
+          `Day ${s.day}`),
       ),
       ...(questChip ? [questChip] : []),
     );
@@ -147,7 +161,9 @@ export class Game {
     this.checkAch();
     save(this.s);
     this.renderHud();
-    this.dock.querySelector('.bag-btn')?.classList.toggle('badged', (this.s.player.points ?? 0) + (this.s.player.asi ?? 0) > 0);
+    const growth = (this.s.player.points ?? 0) + (this.s.player.asi ?? 0) > 0;
+    this.dock.querySelector('.bag-btn')?.classList.toggle('badged', growth);
+    if (growth) hint('growth', 'You have points to spend! Open 🎒 Hero to pick a talent or raise a stat.');
     this.dock.querySelector('.party-btn')?.classList.toggle('badged', members(this.s).slice(1).some((m) => m.hero.points > 0));
     this.map.invalidate(300);
   }
@@ -298,9 +314,16 @@ export class Game {
   /** Music and ambience for where you stand (or a place you're visiting). */
   private setScene(hx: Hex = this.s.pos, poi?: SceneCtx['poi']) {
     const s = this.s;
-    const sc: SceneCtx = { biome: biomeAt(hx, s.seed), poi: poi === undefined ? poiAt(hx, s.seed) : poi, time: this.timeOfDay(), river: riverAt(hx, s.seed) };
+    const weather = weatherAt(s.seed, s.day, hx);
+    const sc: SceneCtx = { biome: biomeAt(hx, s.seed), poi: poi === undefined ? poiAt(hx, s.seed) : poi, time: this.timeOfDay(), river: riverAt(hx, s.seed), weather };
     scene(sc);
     edgeScene(sc);
+    setWeather(weather);
+    if (this.weather && weather !== this.weather) {
+      this.weatherNews = WEATHER_INFO[weather].arrive;
+      if (weather !== 'clear') hint('weather', `${WEATHER_INFO[weather].icon} Weather changes by region and by day. Tap the day to see what the skies are doing.`, 'top');
+    }
+    if (this.weather !== weather) { this.weather = weather; this.renderHud(); }
   }
 
   /** Illustrated banner for the top of a parchment card. */
@@ -328,6 +351,9 @@ export class Game {
     this.setScene();
     this.persist();
     this.foresee();
+    // First journey on this device: how to get going.
+    hint('walk', 'Tap a hex to walk there. Each step burns one 🔥 torch.');
+    if (this.s.quest) hint('beacon', 'The golden ★ beacon marks your quest; the bar up top shows how far it is.', 'top');
     if (this.s.stamina <= 0) this.confirmCamp(true);
   }
 
@@ -468,6 +494,7 @@ export class Game {
       return;
     }
     this.map.flashTile(target, true);
+    dismissHint('walk');
     if (s.stamina <= 0) return this.confirmCamp(true);
     this.busy = true;
     try {
@@ -496,6 +523,8 @@ export class Game {
       const stop = await this.enterTile(step);
       this.persist();
       this.foresee();
+      if (++this.walked >= 5) hint('inspect', 'Long-press any tile to see what lies there before you go.');
+      if (s.stamina > 0 && s.stamina <= 3) hint('torches', 'Torches are running low. Tap 🏕️ Camp to end the day: you heal and get fresh torches.');
       if (stop || s.player.hp <= 0) break;
     }
   }
@@ -510,6 +539,11 @@ export class Game {
 
   private flavor(hx: Hex) {
     const s = this.s;
+    if (this.weatherNews) {
+      const news = this.weatherNews;
+      this.weatherNews = '';
+      return news;
+    }
     if (riverAt(hx, s.seed) && chance(0.6)) return pick(RIVER_FLAVOR);
     const b = biomeAt(hx, s.seed);
     const st = STYLE_FLAVOR[`${b}:${styleAt(hx, s.seed)}`];
@@ -838,6 +872,8 @@ export class Game {
     const cb = heroCheck(s, stat);
     let fx: Effects | null = null;
     let outcomeP: Promise<Outcome> | null = null;
+    // Write both endings while the hero weighs the odds, so the story is ready when the die lands.
+    const ahead = aiEnabled() ? ([true, false] as const).map((ok) => this.outcomeAhead(ev, c, ctx, isQuest, ok)) : null;
     const { roll } = await rollCheck({
       title: `${STAT_NAMES[stat]} check`,
       subtitle: c.label,
@@ -856,7 +892,7 @@ export class Game {
         if (ctx.landmark === 'sword_stone' && stat === 'str' && r.success) track(s).sword = true;
         if (usedInsp) p.inspiration = false;
         fx = applyCheck(s, ev, c, r, ctx.tier, ctx.regionName, isQuest);
-        outcomeP = genOutcome(s, ev, c, { success: r.success, crit: r.crit, fumble: r.fumble, effects: fx.lines });
+        outcomeP = ahead ? ahead[r.success ? 0 : 1] : genOutcome(s, ev, c, { success: r.success, crit: r.crit, fumble: r.fumble, effects: fx.lines });
       },
     });
     const effects = fx as Effects | null;
@@ -882,6 +918,17 @@ export class Game {
     } else if (isQuest) {
       this.setTicker('The goal is still within reach. Regroup, then tap your own tile to try again.');
     }
+  }
+
+  /** Narration for one possible result of a check, written before the roll (effects simulated on a copy of the game). */
+  private outcomeAhead(ev: GameEvent, c: Choice, ctx: EventContext, isQuest: boolean, success: boolean): Promise<Outcome> {
+    const dc = c.dc ?? 12;
+    const fake: D20Roll = { dice: [success ? 15 : 5], kept: success ? 15 : 5, adv: 0, bonus: 0, parts: [], total: success ? dc : dc - 1, dc, success, crit: false, fumble: false };
+    let lines: string[] = [];
+    try {
+      lines = applyCheck(structuredClone(this.s), ev, c, fake, ctx.tier, ctx.regionName, isQuest).lines;
+    } catch { /* narrate without effects */ }
+    return genOutcome(this.s, ev, c, { success, crit: false, fumble: false, effects: lines }, true);
   }
 
   private async outcomeBlock(_card: HTMLElement, choicesEl: HTMLElement, text: string, effects: string[], ok: boolean, sheet: Sheet, rollLine?: string, crit = false, fumble = false, fx?: Effects) {

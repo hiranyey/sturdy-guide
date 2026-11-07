@@ -10,6 +10,7 @@ import { refreshAmbience } from './ambience';
 import { checkForUpdate } from './updates';
 import { applyPrefs, speechSupported, speak, stopSpeech } from './prefs';
 import { installAvailable, offerInstall, isStandalone } from './install';
+import { resetHints } from './hints';
 
 export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onChange?: () => void }) {
   const sheet = new Sheet('panel', { dismissable: true });
@@ -66,6 +67,7 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
       h('h3', null, 'Accessibility'),
       segmented('Text size', [[0.9, 'S'], [1, 'M'], [1.15, 'L'], [1.3, 'XL']], settings.textScale, (v) => { settings.textScale = v; applyPrefs(); render(); }),
       toggle('Reduce motion', settings.reduceMotion, (v) => { settings.reduceMotion = v; applyPrefs(); }),
+      h('button', { class: 'btn wide', onclick: () => { resetHints(); toast('Tips will show again as you play.', 'good'); } }, '💡 Show tips again'),
       !isStandalone() ? h('h3', null, 'App') : null,
       !isStandalone() ? h('button', { class: 'btn wide', onclick: () => offerInstall(true) }, installAvailable() ? '📲 Install Hexbound on this device' : '📲 Add to Home Screen') : null,
       h('h3', null, 'Save backup'),

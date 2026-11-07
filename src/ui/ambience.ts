@@ -4,16 +4,19 @@
 import { audioCtx, ambienceOut, ambienceVerbIn, noise } from './audio';
 import { settings } from '../ai/settings';
 import type { Biome, PoiKind } from '../core/types';
+import type { Weather } from '../core/weather';
 
 export type Amb =
   | 'breeze' | 'wind' | 'gale' | 'leaves' | 'birds' | 'crickets' | 'owls' | 'insects'
-  | 'waves' | 'gulls' | 'river' | 'fire' | 'drips' | 'cavehum' | 'crowd' | 'frogs' | 'chimes' | 'bubbles';
+  | 'waves' | 'gulls' | 'river' | 'fire' | 'drips' | 'cavehum' | 'crowd' | 'frogs' | 'chimes' | 'bubbles'
+  | 'rain' | 'storm';
 
 export interface SceneCtx {
   biome: Biome;
   poi?: PoiKind | 'market' | null;
   time?: 'day' | 'dusk' | 'night';
   river?: boolean;
+  weather?: Weather;
 }
 
 /** What you hear in a place. */
@@ -40,6 +43,24 @@ export function ambienceFor(sc: SceneCtx): Amb[] {
       }
   }
   if (sc.river && !out.includes('river')) out.push('river');
+  return withWeather(out, sc);
+}
+
+/** Weather on top of the place: rain hushes the birds, a storm rolls thunder, snow brings wind. */
+function withWeather(out: Amb[], sc: SceneCtx): Amb[] {
+  const w = sc.weather;
+  if (!w || w === 'clear' || sc.poi === 'cave') return out;
+  const hush = (...gone: Amb[]) => { out = out.filter((a) => !gone.includes(a)); };
+  const add = (a: Amb) => { if (!out.includes(a)) out.push(a); };
+  const windy = () => { if (!out.includes('gale')) add('wind'); };
+  switch (w) {
+    case 'rain': hush('birds', 'gulls', 'insects', 'crickets', 'crowd'); add('rain'); break;
+    case 'storm': hush('birds', 'gulls', 'insects', 'crickets', 'crowd', 'breeze'); add('rain'); add('storm'); windy(); break;
+    case 'snow': hush('birds', 'insects', 'crickets', 'frogs'); windy(); break;
+    case 'fog': hush('birds', 'gulls'); add('drips'); break;
+    case 'heat': hush('birds'); add('insects'); break;
+    case 'wind': hush('breeze'); windy(); break;
+  }
   return out;
 }
 
@@ -167,7 +188,7 @@ function blip(c: AudioContext, l: Layer, o: { f: number; to?: number; type?: Osc
 }
 
 /** A short noise burst (crackles, splashes, footsteps in the crowd). */
-function puff(c: AudioContext, l: Layer, o: { t: number; dur: number; vol: number; type?: BiquadFilterType; freq: number; to?: number; q?: number }) {
+function puff(c: AudioContext, l: Layer, o: { t: number; dur: number; vol: number; type?: BiquadFilterType; freq: number; to?: number; q?: number; attack?: number }) {
   const buf = noise();
   if (!buf) return;
   const s = c.createBufferSource();
@@ -179,14 +200,28 @@ function puff(c: AudioContext, l: Layer, o: { t: number; dur: number; vol: numbe
   f.Q.value = o.q ?? 1;
   const g = c.createGain();
   g.gain.setValueAtTime(0.0001, o.t);
-  g.gain.exponentialRampToValueAtTime(o.vol, o.t + Math.min(0.01, o.dur / 3));
+  g.gain.exponentialRampToValueAtTime(o.vol, o.t + (o.attack ?? Math.min(0.01, o.dur / 3)));
   g.gain.exponentialRampToValueAtTime(0.0001, o.t + o.dur);
+  s.loop = o.dur > 1.5; // the noise buffer is 2s long
   s.connect(f).connect(g).connect(l.gain);
   s.start(o.t, Math.random() * 1.5);
   s.stop(o.t + o.dur + 0.05);
 }
 
 const BUILD: Record<Amb, (c: AudioContext, l: Layer) => void> = {
+  rain: (c, l) => {
+    bed(c, l, { type: 'highpass', freq: 1800, vol: 0.09, gRate: 0.12, gDepth: 0.02 });
+    bed(c, l, { type: 'bandpass', freq: 600, q: 0.5, vol: 0.06 });
+    every(l, 0.04, 0.18, (t) => puff(c, l, { t, dur: rnd(0.01, 0.03), vol: rnd(0.02, 0.06), freq: rnd(2500, 6000), q: 3 }));
+  },
+  // Thunder rolls now and then; the map's lightning flashes just before each one.
+  storm: (c, l) => every(l, 9, 22, (t) => {
+    const near = Math.random() < 0.4;
+    const at = t + rnd(0.4, 1.6);
+    dispatchEvent(new CustomEvent('hexbound:thunder', { detail: { inMs: (at - c.currentTime) * 1000 - (near ? 120 : 600), near } }));
+    if (near) puff(c, l, { t: at, dur: 0.5, vol: 0.22, freq: 2400, to: 300, q: 0.8 });
+    puff(c, l, { t: at + (near ? 0.05 : 0), dur: rnd(3, 5), vol: near ? 0.6 : 0.35, type: 'lowpass', freq: 140, to: 50, attack: 0.25 });
+  }),
   breeze: (c, l) => bed(c, l, { type: 'lowpass', freq: 500, vol: 0.12, fRate: 0.08, fDepth: 250, gRate: 0.05, gDepth: 0.05 }),
   wind: (c, l) => bed(c, l, { type: 'bandpass', freq: 700, q: 0.8, vol: 0.2, fRate: 0.1, fDepth: 400, gRate: 0.07, gDepth: 0.1 }),
   gale: (c, l) => {

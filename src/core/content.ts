@@ -1,16 +1,23 @@
 // Hand-written fallback content. Used when no OpenRouter key is set,
 // when a request fails, and for cheap "filler" turns that never need an LLM.
 import { pick, type Rand, rand, chance } from './rng';
+import { HERO_NAMES } from './names';
 import type { Biome, EnemySpec, EventContext, GameEvent, NpcSpec, PoiKind, Tone } from './types';
 
 const FIRST = ['Mira', 'Tobin', 'Esk', 'Wren', 'Holt', 'Isolde', 'Fenn', 'Brakka', 'Lio', 'Senna', 'Orrin', 'Talia', 'Quill', 'Marrow', 'Juna', 'Cassius', 'Pip', 'Yara', 'Dov', 'Ilse', 'Rook', 'Nessa', 'Bram', 'Calla', 'Zeph', 'Odo', 'Vesna', 'Garrick', 'Lumi', 'Thane'];
-const EPITHET = ['the Lantern-Bearer', 'Half-Hand', 'of the Reeds', 'Ashcloak', 'the Unlucky', 'Saltborn', 'the Quiet', 'Ironbrow', 'Two-Coins', 'the Wanderer', 'Moth-Eyed', 'the Kind'];
+// Folk you meet on the road, never offered as hero names.
+const FOLK = ['Hobb', 'Tilly', 'Grisel', 'Abner', 'Mags', 'Wendel', 'Dorrit', 'Jebb', 'Old Nan', 'Ferris', 'Clova', 'Ludo', 'Prue', 'Barnaby', 'Gilly', 'Mott',
+  'Agnes', 'Silas', 'Hettie', 'Tobias', 'Martha', 'Ozzle', 'Bettany', 'Crumb', 'Fitch', 'Nell', 'Ewan', 'Pell', 'Rosco', 'Marigold', 'Ulma', 'Dunstan'];
+const EPITHET = ['the Ferryman', 'Crookback', 'of the Long Road', 'Sootfinger', 'the Twice-Drowned', 'Lantern-Jaw', 'the Patient', 'Goldtooth', 'of No Fixed Abode', 'Thrice-Lucky',
+  'the Lantern-Bearer', 'Half-Hand', 'of the Reeds', 'Ashcloak', 'the Unlucky', 'Saltborn', 'the Quiet', 'Ironbrow', 'Two-Coins', 'the Wanderer', 'Moth-Eyed', 'the Kind'];
 const LOOKS = ['a patched green cloak and a crooked smile', 'silver-streaked braids and ink-stained fingers', 'a scarred jaw and a beekeeper\'s veil', 'too many rings and a nervous laugh', 'a wolf-pelt mantle and calm grey eyes', 'a bright red scarf and muddy boots', 'freckles, a slingshot and a bandaged knee', 'a monk\'s robe singed at the hem'];
 const PERSONALITIES = ['cheerful but secretly grieving', 'gruff, loyal once trust is earned', 'curious to a fault', 'sarcastic and brave', 'gentle, speaks in proverbs', 'boastful, terrified of the dark', 'shrewd and honest', 'dreamy, hums old songs'];
 const ROLES = ['wandering herbalist', 'retired sellsword', 'runaway apprentice', 'travelling tinker', 'disgraced knight', 'map-maker', 'monster hunter', 'shrine keeper', 'goat herder', 'smuggler'];
 
+/** A stranger's name: sometimes one of the grand hero names, more often a plain folk name, often with an epithet. */
 export function npcName(r: Rand = rand) {
-  return `${pick(FIRST, r)}${chance(0.5, r) ? ' ' + pick(EPITHET, r) : ''}`;
+  if (chance(0.4, r)) return pick(HERO_NAMES, r);
+  return `${pick(chance(0.5, r) ? FIRST : FOLK, r)}${chance(0.5, r) ? ' ' + pick(EPITHET, r) : ''}`;
 }
 
 export function randomNpc(r: Rand = rand, role?: string): NpcSpec {

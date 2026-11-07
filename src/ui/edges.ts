@@ -1,9 +1,10 @@
 // The screen's top and bottom edges (behind the iPhone status bar and home
 // indicator) take on the colour of the scene: green in the forest, sand in the
 // desert, deep blue at sea, darker at night, red in a fight, ember-orange at
-// camp. The same colour feeds <meta name="theme-color"> for Safari and Android.
+// camp, greyer in a storm. The same colour feeds <meta name="theme-color"> for Safari and Android.
 import type { Biome } from '../core/types';
 import type { SceneCtx } from './ambience';
+import type { Weather } from '../core/weather';
 
 type RGB = [number, number, number];
 export type EdgeMood = 'title' | 'combat' | 'boss' | 'camp';
@@ -20,6 +21,10 @@ const PLACE: Record<string, RGB> = {
 const MOOD: Record<EdgeMood, RGB> = {
   title: [24, 28, 58], combat: [128, 22, 26], boss: [138, 16, 46], camp: [130, 62, 18],
 };
+/** Weather pulls the colour towards grey storm cloud, cold snow light, fog or dusty heat. */
+const WEATHER: Partial<Record<Weather, [RGB, number]>> = {
+  rain: [[50, 60, 80], 0.25], storm: [[36, 40, 56], 0.45], snow: [[150, 165, 190], 0.2], fog: [[120, 125, 135], 0.3], heat: [[150, 90, 30], 0.25],
+};
 const BASE: RGB = [17, 20, 42]; // the app's navy
 const NIGHT: RGB = [10, 14, 38];
 const DUSK: RGB = [92, 46, 70];
@@ -33,6 +38,8 @@ export function edgeColor(sc: SceneCtx): RGB {
   let c = mix(BASE, tint, 0.6);
   if (sc.time === 'dusk') c = mix(c, DUSK, 0.3);
   if (sc.time === 'night') c = mix(c, NIGHT, 0.6);
+  const wx = sc.weather && WEATHER[sc.weather];
+  if (wx) c = mix(c, wx[0], wx[1]);
   return c;
 }
 
