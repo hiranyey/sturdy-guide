@@ -18,7 +18,8 @@
   --die-lo: #2e1f7a;
   --die-edge: #d9ceff;
   --safe-t: env(safe-area-inset-top, 0px);
-  --safe-b: max(env(safe-area-inset-bottom, 0px), var(--vp-safe-b, 0px));
+  /* Minus the strip iOS sometimes leaves under the page (src/ui/viewport.ts). */
+  --safe-b: max(0px, calc(env(safe-area-inset-bottom, 0px) - var(--vp-gap, 0px)));
   --head: 'Cinzel', Georgia, serif;
   --body: 'Alegreya', Georgia, serif;
 }
@@ -826,6 +827,8 @@ body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-
   #hud, #dock { background-color: var(--edge-deep); }
 }
 
-/* iOS home-screen bug: the page can stop short of the screen bottom (src/ui/viewport.ts
-   measures the shortfall). Stretch every full-screen layer down into it. */
-#app, #overlay, .sheet, .modal, .dice-overlay, .screen, .rotate-note { bottom: calc(-1 * var(--vp-gap, 0px)); }
+/* iOS home-screen bug: the page can stop short of the screen bottom, and iOS paints
+   only the page background (--edge-deep) in the strip below it (src/ui/viewport.ts
+   sets .vp-short). Make whatever touches the bottom end in that same colour. */
+.vp-short #dock { background-image: linear-gradient(0deg, var(--edge-deep) 0, var(--edge-deep) 6px, rgba(0,0,0,0) 100%); }
+.vp-short .title-screen::after { content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 90px; pointer-events: none; background: linear-gradient(0deg, var(--edge-deep), transparent); }

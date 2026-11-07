@@ -1,8 +1,9 @@
 // iOS home-screen apps with the translucent status bar sometimes get a page that
 // is shorter than the screen: `position: fixed; inset: 0` stops above the home
-// indicator and the strip below shows bare page background. We measure the
-// shortfall and publish it as --vp-gap; the full-screen layers stretch down by
-// that much (see style.css), so the map and dock run to the very bottom edge.
+// indicator, and iOS paints only the page background in the strip below (content
+// can't be drawn there). We measure the shortfall as --vp-gap and set .vp-short:
+// the dock drops the home-indicator padding (the strip already clears it) and the
+// bottom of the page fades into the strip's colour (see style.css).
 
 /** True only for an installed iOS web app (navigator.standalone is iOS-only). */
 const iosStandalone = () => (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -32,9 +33,7 @@ export function fitViewport() {
     if (g === last) return;
     last = g;
     root.setProperty('--vp-gap', `${g}px`);
-    // With the page cut short, iOS may report no bottom inset even though the
-    // stretched layers now reach the home indicator; keep controls clear of it.
-    root.setProperty('--vp-safe-b', g > 0 && Math.max(screen.width, screen.height) >= 812 ? '34px' : '0px');
+    document.documentElement.classList.toggle('vp-short', g > 0);
   };
   update();
   addEventListener('resize', update);
