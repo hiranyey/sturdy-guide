@@ -4,7 +4,7 @@ import { h } from './dom';
 
 const KEY = 'hexbound.hints';
 
-export type HintId = 'walk' | 'beacon' | 'torches' | 'inspect' | 'growth' | 'weather';
+export type HintId = 'walk' | 'beacon' | 'torches' | 'inspect' | 'growth' | 'weather' | 'freeform';
 
 let seen: Record<string, 1> = (() => {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') as Record<string, 1>; } catch { return {}; }

@@ -842,7 +842,7 @@ body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-
 .vp-short .title-screen::after { content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 90px; pointer-events: none; background: linear-gradient(0deg, var(--edge-deep), transparent); }
 
 /* ---------- First-journey tips (hints.ts) ---------- */
-.hint-bubble { position: fixed; left: 16px; right: 16px; max-width: 420px; z-index: 8; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px;
+.hint-bubble { position: fixed; left: 16px; right: 16px; max-width: 420px; z-index: 12; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px;
   background: rgba(20,22,44,0.94); border: 1px solid var(--gold); box-shadow: 0 8px 26px rgba(0,0,0,0.55), 0 0 18px rgba(255,200,80,0.18); font-size: 0.92rem; line-height: 1.3;
   opacity: 0; transform: translateY(8px); transition: opacity 0.25s, transform 0.25s; cursor: pointer; }
 .hint-bubble.show { opacity: 1; transform: none; }
@@ -869,3 +869,20 @@ body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-
 @keyframes lightningNear { 0% { opacity: 0; } 4% { opacity: 0.5; } 10% { opacity: 0.08; } 15% { opacity: 0.4; } 50%, 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .weather[data-w="heat"] { animation: none; } }
 .day .wx { margin-right: 4px; }
+
+/* ---------- Write your own action (freeform.ts) ---------- */
+.write-own { display: flex; flex-direction: column; gap: 8px; }
+.choice-write { background: linear-gradient(135deg, #fff3cf, #f6e2ff); border-style: dashed; border-color: #a77fd0; box-shadow: 0 3px 0 #a77fd0; }
+.choice-write .clabel { font-style: italic; }
+.cbadge.write { background: #6b47b8; color: #fff; }
+.write-box { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: #fff8e6; border: 1px dashed #a77fd0; }
+.write-input { width: 100%; resize: none; padding: 10px 12px; border-radius: 10px; border: 1px solid #c9a768; background: #fffdf6; color: var(--ink); font: inherit; font-size: 16px; line-height: 1.35; user-select: text; -webkit-user-select: text; }
+.write-input:focus { outline: 2px solid #a77fd0; outline-offset: 1px; }
+.write-row { display: flex; align-items: center; gap: 8px; }
+.write-row .write-count { flex: 1; font-size: 0.78rem; color: var(--ink-soft); }
+.write-row .btn { padding: 8px 14px; }
+.write-note { font-size: 0.88rem; color: var(--ink-soft); font-style: italic; min-height: 1.1em; }
+.write-note.bad { color: #8a2a20; font-style: normal; }
+.write-said { font-style: italic; color: var(--ink-soft); padding: 0 4px; }
+.write-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.write-meta .linkish { margin-left: auto; color: #6b47b8; font-size: 0.88rem; text-decoration: underline; padding: 4px; }

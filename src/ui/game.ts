@@ -38,6 +38,7 @@ import { pick, chance, mulberry32, hashString, randInt } from '../core/rng';
 import { genEvent, genOutcome, genRegion, genQuest, genChapterEnd, type Outcome } from '../ai/director';
 import { aiEnabled } from '../ai/settings';
 import { Foresight, prune, type Want } from '../ai/foresight';
+import { interpretAction, isOpenMoment, MAX_ACTION, MAX_TRIES } from '../ai/freeform';
 import { STATS, STAT_NAMES } from '../core/types';
 import type { ClassId, Choice, EnemySpec, EventContext, GameEvent, GameState, Hero, Item, PoiKind, Stat, NPC } from '../core/types';
 
@@ -765,6 +766,76 @@ export class Game {
     for (const c of ev.choices) {
       choicesEl.appendChild(this.choiceButton(c, () => this.resolveChoice(sheet, card, choicesEl, ev, c, ctx), ctx.tier, ctx.poi === 'quest'));
     }
+    if (isOpenMoment(ev, ctx)) {
+      choicesEl.appendChild(this.writeYourOwn(sheet, card, choicesEl, ev, ctx));
+      hint('freeform', 'A turning point! Tap ✍️ to write your own action: the Dungeon Master sets the roll.', 'top');
+    }
+  }
+
+  /** At special moments: type what your hero tries; the referee turns it into a fair roll. */
+  private writeYourOwn(sheet: Sheet, card: HTMLElement, choicesEl: HTMLElement, ev: GameEvent, ctx: EventContext) {
+    const s = this.s;
+    let tries = 0;
+    const wrap = h('div', { class: 'write-own' });
+    const open = () => {
+      sfx.tap();
+      const input = h('textarea', { class: 'write-input', rows: 2, maxlength: MAX_ACTION, placeholder: 'e.g. "Offer the guard my last potion" or "Climb the statue and ring the bell"', enterkeyhint: 'go', spellcheck: true }) as HTMLTextAreaElement;
+      const count = h('span', { class: 'write-count' }, `0/${MAX_ACTION}`);
+      const note = h('div', { class: 'write-note', role: 'status' });
+      const go = h('button', { class: 'btn btn-primary', onclick: () => submit() }, 'Try it');
+      const back = h('button', { class: 'btn', onclick: () => { sfx.tap(); render(); } }, 'Cancel');
+      input.addEventListener('input', () => { count.textContent = `${input.value.length}/${MAX_ACTION}`; });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
+      const submit = async () => {
+        if (!input.value.trim()) { input.focus(); return; }
+        go.disabled = back.disabled = input.disabled = true;
+        note.className = 'write-note';
+        note.textContent = aiEnabled() ? 'The Dungeon Master weighs your idea…' : 'Weighing your idea…';
+        const intent = await interpretAction(s, ev, ctx, input.value);
+        if (!intent.choice) {
+          tries++;
+          sfx.deny();
+          note.className = 'write-note bad';
+          note.textContent = `${intent.refuse ?? 'That can’t be tried here.'}${tries >= MAX_TRIES ? ' Pick one of the options above.' : ''}`;
+          if (tries >= MAX_TRIES) { input.disabled = true; back.disabled = false; return; }
+          go.disabled = back.disabled = input.disabled = false;
+          input.focus();
+          return;
+        }
+        // Show how the referee read it before committing.
+        const c = intent.choice;
+        const cost = [intent.spend.gold ? `${intent.spend.gold} gold` : '', intent.spend.potions ? `${intent.spend.potions} potion${intent.spend.potions > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ');
+        wrap.innerHTML = '';
+        wrap.append(
+          h('div', { class: 'write-said' }, '“', c.custom ?? c.label, '”'),
+          this.choiceButton(c, () => {
+            if (intent.spend.gold || intent.spend.potions) {
+              s.player.gold -= intent.spend.gold;
+              s.player.potions -= intent.spend.potions;
+              toast(`You give up ${cost}.`, 'info');
+              this.renderHud();
+            }
+            log(s, `tried their own idea at ${ev.title}: "${c.custom ?? c.label}"`, 'event');
+            wrap.remove();
+            void this.resolveChoice(sheet, card, choicesEl, ev, c, ctx);
+          }, ctx.tier, ctx.poi === 'quest'),
+          h('div', { class: 'write-meta' },
+            c.adv ? h('span', { class: 'chip good' }, '💡 Clever idea: advantage') : null,
+            cost ? h('span', { class: 'chip bad' }, `Costs ${cost}`) : null,
+            h('button', { class: 'linkish', onclick: () => { sfx.tap(); open(); } }, '✎ Rethink')),
+        );
+      };
+      wrap.innerHTML = '';
+      wrap.append(h('div', { class: 'write-box' }, input, h('div', { class: 'write-row' }, count, back, go), note));
+      input.focus();
+    };
+    const render = () => {
+      wrap.innerHTML = '';
+      wrap.append(h('button', { class: 'choice choice-write', onclick: open },
+        h('span', { class: 'clabel' }, '✍️ Write your own action'), h('span', { class: 'cbadge write' }, 'YOUR IDEA')));
+    };
+    render();
+    return wrap;
   }
 
   private choiceButton(c: Choice, onClick: () => void, tier = 1, boss = false) {
@@ -881,6 +952,7 @@ export class Game {
       bonus: cb.total,
       parts: cb.parts,
       canInspire: p.inspiration,
+      adv: c.adv,
       lucky: partyMods(s).lucky,
       extra: (r) => r.crit
         ? h('button', { class: 'share-btn', onclick: () => shareCard(s, { kind: 'crit', title: `${STAT_NAMES[stat]} check`, subtitle: c.label, total: r.total, dc: r.dc }) }, '📤 Share this moment')

@@ -158,6 +158,10 @@ export interface Choice {
   dc?: number;
   reward?: RewardKind;
   enemy?: EnemySpec;
+  /** the player's own words, when they wrote this action themselves */
+  custom?: string;
+  /** rolled with advantage (a clever idea) */
+  adv?: 1;
 }
 
 export interface NpcSpec { name: string; role: string; look: string; personality: string; cls?: ClassId }
@@ -167,6 +171,8 @@ export interface GameEvent {
   text: string;
   npc: NpcSpec | null;
   choices: Choice[];
+  /** a turning point: the hero may write their own action (src/ai/freeform.ts) */
+  open?: boolean;
 }
 
 /** An encounter the AI wrote before the hero got there. */

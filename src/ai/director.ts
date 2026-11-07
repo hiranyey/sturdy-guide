@@ -132,6 +132,7 @@ export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
     text: clip(raw?.text, 520, fb.text),
     npc: null,
     choices: [],
+    ...(raw?.open === true ? { open: true } : {}),
   };
   if (raw?.npc && typeof raw.npc === 'object' && clip(raw.npc.name, 40)) {
     ev.npc = { name: clip(raw.npc.name, 40), role: clip(raw.npc.role, 40, 'traveller'), look: clip(raw.npc.look, 100), personality: clip(raw.npc.personality, 80) } as NpcSpec;
@@ -196,6 +197,7 @@ Return JSON:
 {"title": "2-5 words",
  "text": "the scene, 35-70 words, ending on a moment of decision",
  "npc": null or {"name": "...", "role": "...", "look": "short visual description", "personality": "3-6 words", "class": "warrior|rogue|mage|bard" (how they'd fight if they joined the party)},
+ "open": true only if this is a turning point where the hero might well try something of their own (a tense negotiation, a mystery, a moral choice, a strange power); at most 1 scene in 4,
  "choices": [ 3 or 4 options, each:
    {"label": "imperative, max 6 words", "kind": "check" | "fight" | "trade" | "rest" | "leave",
     "stat": "str|dex|con|int|wis|cha" (check only), "dc": 8-${Math.min(20, 12 + ctx.tier * 2)} (check only; 10 easy, 13 fair, 16 hard),
@@ -220,7 +222,7 @@ export async function genOutcome(s: GameState, ev: GameEvent, choice: Choice, re
   try {
     const out = await ask<Outcome>(s, `Narrate the result of the hero's choice.
 Scene: ${JSON.stringify({ title: ev.title, text: ev.text, npc: ev.npc?.name ?? null })}
-Choice: "${choice.label}" (${choice.stat?.toUpperCase() ?? ''} check vs DC ${choice.dc ?? '-'}).
+Choice: "${choice.custom ?? choice.label}"${choice.custom ? ' (the player\'s own idea: honour its specifics)' : ''} (${choice.stat?.toUpperCase() ?? ''} check vs DC ${choice.dc ?? '-'}).
 Dice result (FINAL, do not contradict): ${result.crit ? 'CRITICAL SUCCESS (natural 20)' : result.fumble ? 'CRITICAL FAILURE (natural 1)' : result.success ? 'SUCCESS' : 'FAILURE'}.
 ${approx
   ? `Likely mechanical effects (exact amounts and items may differ, so mention them only in general terms: no numbers, no item names): ${result.effects.join(', ') || 'none'}.`
