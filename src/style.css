@@ -40,12 +40,13 @@ h3 { font-size: 0.95rem; color: var(--gold); margin-top: 1.2em; text-transform: 
 /* ---------- Layout ---------- */
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; max-width: 620px; margin: 0 auto; }
 @media (min-width: 621px) { #app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
-#map-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; }
+/* The map fills the whole screen; the HUD and dock float over it as tinted frosted glass. */
+#map-wrap { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
 #map { position: absolute; inset: 0; display: block; touch-action: none; }
 body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hidden; }
 
 /* ---------- HUD ---------- */
-#hud { padding: calc(var(--safe-t) + 8px) 10px 6px; background: linear-gradient(180deg, #141830 0%, #11142a 100%); border-bottom: 1px solid var(--line); box-shadow: 0 4px 20px rgba(0,0,0,0.4); z-index: 2; }
+#hud { position: relative; flex: none; padding: calc(var(--safe-t) + 8px) 10px 6px; z-index: 2; }
 .hud-row { display: flex; align-items: center; gap: 8px; }
 .hud-row.row2 { margin-top: 6px; justify-content: space-between; }
 .hero-chip { display: flex; align-items: center; gap: 7px; min-width: 0; text-align: left; }
@@ -87,7 +88,7 @@ body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hid
 .qc-dist { color: var(--muted); white-space: nowrap; font-size: 0.75rem; }
 
 /* ---------- Map overlay UI ---------- */
-#map-ui { position: absolute; inset: 0; pointer-events: none; }
+#map-ui { position: absolute; inset: var(--hud-h, 0px) 0 var(--dock-h, 0px); pointer-events: none; }
 .map-ctrls { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
 .mc { width: 40px; height: 40px; border-radius: 50%; background: rgba(15,18,34,0.82); border: 1px solid var(--line); font-size: 20px; color: var(--gold-hi); box-shadow: 0 2px 10px rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
 .mc.recenter { opacity: 0.5; transition: opacity 0.3s, transform 0.3s; }
@@ -100,7 +101,7 @@ body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hid
 .rb-blurb { font-style: italic; font-size: 0.85rem; color: #d8d2c0; }
 
 /* ---------- Dock ---------- */
-#dock { background: linear-gradient(0deg, #0c0f1e, #141830); border-top: 1px solid var(--line); padding: 0 6px calc(var(--safe-b) + 4px); z-index: 2; }
+#dock { position: relative; flex: none; margin-top: auto; padding: 0 6px calc(var(--safe-b) + 4px); z-index: 2; }
 .ticker { display: block; width: 100%; padding: 8px 8px 6px; font-style: italic; color: #d8d2c0; font-size: 0.9rem; text-align: center; min-height: 2.4em; line-height: 1.2; }
 .ticker.pulse { animation: tick 0.5s ease; }
 @keyframes tick { from { opacity: 0; transform: translateY(4px); } }
@@ -801,3 +802,26 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
 .update-banner .ub-go { padding: 8px 14px; font-size: 0.9rem; }
 .update-banner .ub-later { background: none; border: 0; color: var(--muted); font-size: 1rem; padding: 6px; }
 .app-version .link { background: none; border: 0; padding: 0; color: var(--gold-hi); text-decoration: underline; font: inherit; cursor: pointer; }
+
+/* ---------- Scene-tinted edges (edges.ts) ---------- */
+:root { --edge-bg: rgba(17,20,42,0.74); --edge-fade: rgba(17,20,42,0.5); --edge-line: rgba(212,166,74,0.3); --edge-deep: #0b0d1c; }
+html, body { background: var(--edge-deep); transition: background-color 1.2s ease; }
+#hud, #dock {
+  background-color: var(--edge-bg);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+  transition: background-color 1.2s ease, box-shadow 1.2s ease;
+}
+/* Darker right under the status bar so the white clock stays readable; a soft lip below. */
+#hud { background-image: linear-gradient(180deg, rgba(0,0,0,0.42) 0, rgba(0,0,0,0.12) calc(var(--safe-t) + 26px), rgba(0,0,0,0) 100%); border-bottom: 1px solid var(--edge-line); box-shadow: 0 6px 22px rgba(0,0,0,0.3); }
+#dock { background-image: linear-gradient(0deg, rgba(0,0,0,0.4) 0, rgba(0,0,0,0) 100%); border-top: 1px solid var(--edge-line); box-shadow: 0 -6px 22px rgba(0,0,0,0.3); }
+/* Feather the map into the bars instead of a hard line. */
+#hud::after, #dock::before { content: ''; position: absolute; left: 0; right: 0; height: 22px; pointer-events: none; transition: opacity 1.2s; }
+#hud::after { top: 100%; background: linear-gradient(180deg, var(--edge-fade), transparent); }
+#dock::before { bottom: 100%; background: linear-gradient(0deg, var(--edge-fade), transparent); }
+/* A fight: the edges throb red. */
+body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-out infinite; }
+@keyframes edgeAlert { 50% { box-shadow: 0 0 34px rgba(255,40,40,0.55), inset 0 0 26px rgba(255,60,60,0.35); } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #hud, #dock { background-color: var(--edge-deep); }
+}

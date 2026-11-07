@@ -1,6 +1,7 @@
 import { h, $, Sheet, modal, toast, typewrite, wait, bar, vibrate, longPress, popover } from './dom';
 import { setMood, scene, stinger } from './music';
 import { setAmbience, CAMP_AMBIENCE, type SceneCtx } from './ambience';
+import { edgeScene, edgeMood } from './edges';
 import { speak, stopSpeech, announce } from './prefs';
 import { offerInstall } from './install';
 import { shareCard } from './share';
@@ -240,7 +241,9 @@ export class Game {
   /** Music and ambience for where you stand (or a place you're visiting). */
   private setScene(hx: Hex = this.s.pos, poi?: SceneCtx['poi']) {
     const s = this.s;
-    scene({ biome: biomeAt(hx, s.seed), poi: poi === undefined ? poiAt(hx, s.seed) : poi, time: this.timeOfDay(), river: riverAt(hx, s.seed) });
+    const sc: SceneCtx = { biome: biomeAt(hx, s.seed), poi: poi === undefined ? poiAt(hx, s.seed) : poi, time: this.timeOfDay(), river: riverAt(hx, s.seed) };
+    scene(sc);
+    edgeScene(sc);
   }
 
   /** Illustrated banner for the top of a parchment card. */
@@ -882,6 +885,7 @@ export class Game {
       const enemy = makeEnemy(spec, tier, boss, allies.length, p.level);
       const cs = startCombat(enemy);
       setMood(boss ? 'boss' : 'combat');
+      edgeMood(boss ? 'boss' : 'combat');
       setTimeout(() => sfx.roar(spec.kind), 350);
       const sheet = new Sheet('combat');
       const tray = new DiceTray();
@@ -1391,6 +1395,7 @@ export class Game {
       h('div', { class: 'campfire' }, h('span', { class: 'flame f1' }), h('span', { class: 'flame f2' }), h('span', { class: 'flame f3' }), h('span', { class: 'logs' })),
       h('p', { class: 'muted center' }, aiEnabled() ? 'The bard by the fire writes today\'s chapter…' : 'The fire crackles as you recount the day…')));
     setMood('camp');
+    edgeMood('camp');
     setAmbience(CAMP_AMBIENCE);
     sfx.camp();
     const out = await genChapterEnd(s);

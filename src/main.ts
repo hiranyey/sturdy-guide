@@ -8,6 +8,7 @@ import { toast } from './ui/dom';
 import { initUpdates } from './ui/updates';
 import { setMood } from './ui/music';
 import { setAmbience, TITLE_AMBIENCE } from './ui/ambience';
+import { edgeMood } from './ui/edges';
 import { createGame, load, save, reveal } from './core/state';
 import { finishOAuth } from './ai/openrouter';
 import { genPremise } from './ai/director';
@@ -18,6 +19,24 @@ let demo: GameState | null = null;
 let game: Game | null = null;
 
 const map = new MapView(document.getElementById('map') as HTMLCanvasElement, () => current ?? demo);
+
+// The map runs under the HUD and dock: tell the camera and the overlay UI how tall they are.
+function watchBars() {
+  const hud = document.getElementById('hud')!, dock = document.getElementById('dock')!;
+  const update = () => {
+    const top = document.body.classList.contains('at-title') ? 0 : hud.offsetHeight;
+    const bottom = document.body.classList.contains('at-title') ? 0 : dock.offsetHeight;
+    document.documentElement.style.setProperty('--hud-h', `${top}px`);
+    document.documentElement.style.setProperty('--dock-h', `${bottom}px`);
+    map.setInsets(top, bottom);
+  };
+  const ro = new ResizeObserver(update);
+  ro.observe(hud);
+  ro.observe(dock);
+  new MutationObserver(update).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  update();
+}
+watchBars();
 
 function makeDemo() {
   const d = createGame('', 'warrior', 'heroic', { name: '', hook: '' });
@@ -35,6 +54,7 @@ function title() {
   document.body.classList.add('at-title');
   setMood('title');
   setAmbience(TITLE_AMBIENCE);
+  edgeMood('title');
   showTitle({
     onContinue: () => {
       const s = load();

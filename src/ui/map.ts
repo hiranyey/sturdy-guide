@@ -341,6 +341,23 @@ export class MapView {
     this.invalidate();
   }
 
+  /** Height of the bars drawn over the map (HUD on top, dock below). */
+  private insetTop = 0;
+  private insetBottom = 0;
+  /** The map runs under the translucent bars: keep the hero centred in what's actually visible. */
+  setInsets(top: number, bottom: number) {
+    if (top === this.insetTop && bottom === this.insetBottom) return;
+    const was = this.viewShift;
+    this.insetTop = top;
+    this.insetBottom = bottom;
+    const d = this.viewShift - was;
+    this.cam.y -= d;
+    this.camTarget.y -= d;
+    this.invalidate();
+  }
+  /** How far below the canvas centre the visible area's centre sits. */
+  private get viewShift() { return (this.insetTop - this.insetBottom) / 2; }
+
   private userZoomed = false;
   private setSize(s: number) {
     const old = this.size;
@@ -358,8 +375,8 @@ export class MapView {
     const p = toPixel(h, this.size);
     this.player.x = p.x;
     this.player.y = p.y;
-    this.cam = { ...p };
-    this.camTarget = { ...p };
+    this.cam = { x: p.x, y: p.y - this.viewShift };
+    this.camTarget = { ...this.cam };
     this.follow = true;
     this.onFollowChange(true);
     this.invalidate();
@@ -591,7 +608,7 @@ export class MapView {
     if (this.demo) {
       this.camTarget.x += size * 0.012;
       this.camTarget.y += size * 0.004;
-    } else if (this.follow) this.camTarget = { x: this.player.x, y: this.player.y + size * 0.4 };
+    } else if (this.follow) this.camTarget = { x: this.player.x, y: this.player.y + size * 0.4 - this.viewShift };
     this.cam.x += (this.camTarget.x - this.cam.x) * 0.15;
     this.cam.y += (this.camTarget.y - this.cam.y) * 0.15;
     const ox = this.w / 2 - this.cam.x, oy = this.h / 2 - this.cam.y;
@@ -764,10 +781,11 @@ export class MapView {
 
   private drawEdgeArrow(x: number, y: number, t: number, dist: number) {
     const m = 34;
-    if (x > m && x < this.w - m && y > m && y < this.h - m) return;
-    const cx = this.w / 2, cy = this.h / 2;
+    const top = this.insetTop + m, bottom = this.h - this.insetBottom - m;
+    if (x > m && x < this.w - m && y > top && y < bottom) return;
+    const cx = this.w / 2, cy = (top + bottom) / 2;
     const dx = x - cx, dy = y - cy;
-    const k = Math.min((this.w / 2 - m) / Math.abs(dx || 1e-6), (this.h / 2 - m) / Math.abs(dy || 1e-6));
+    const k = Math.min((this.w / 2 - m) / Math.abs(dx || 1e-6), Math.max(10, (bottom - top) / 2) / Math.abs(dy || 1e-6));
     const ax = cx + dx * k, ay = cy + dy * k;
     const ang = Math.atan2(dy, dx);
     const ctx = this.ctx;
