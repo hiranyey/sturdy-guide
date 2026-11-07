@@ -35,7 +35,7 @@ describe('dice & checks', () => {
   it('levels up with XP', () => {
     const p = newPlayer('T', 'warrior');
     const hp = p.maxHp;
-    expect(gainXp(p, 270)).toBe(2);
+    expect(gainXp(p, 280)).toBe(2);
     expect(p.level).toBe(3);
     expect(p.maxHp).toBeGreaterThan(hp);
   });

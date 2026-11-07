@@ -167,11 +167,18 @@ export function successChance(bonus: number, dc: number, adv: -1 | 0 | 1 = 0) {
   return p;
 }
 
-/** XP_LEVELS[n] is the total XP needed to reach level n + 1. */
-export const XP_LEVELS = [
-  0, 100, 260, 480, 760, 1100, 1500, 2000, 2600, 3300,
-  4100, 5000, 6000, 7100, 8300, 9600, 11000, 12500, 14100, 15800,
-];
+/**
+ * A smooth levelling curve: going from level L to L + 1 costs 100 + 80·(L − 1) XP
+ * (100, 180, 260, 340 …), so every level asks exactly 80 XP more than the last.
+ * Rewards grow with the danger tier (and, past tier 5, with how far you've outgrown
+ * a region), so the number of encounters per level rises gently: about 4 at first,
+ * 8 by level 10, and 9–10 near the cap.
+ */
+export const XP_STEP_BASE = 100;
+export const XP_STEP_GROWTH = 80;
+export const xpStep = (level: number) => XP_STEP_BASE + XP_STEP_GROWTH * (level - 1);
+/** XP_LEVELS[n] is the total XP needed to reach level n + 1 (closed form: 100n + 40n(n − 1)). */
+export const XP_LEVELS: number[] = Array.from({ length: MAX_LEVEL }, (_, n) => XP_STEP_BASE * n + (XP_STEP_GROWTH / 2) * n * (n - 1));
 /** Total XP to reach the next level (Infinity at the level cap). */
 export function xpForNext(level: number) {
   return level >= MAX_LEVEL ? Infinity : XP_LEVELS[level];

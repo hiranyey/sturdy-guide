@@ -844,7 +844,7 @@ export class Game {
       s.pendingFight = { spec, tier, boss, intro, ...resume };
       save(s);
       const allies = party(s).filter((n) => n.hero);
-      const enemy = makeEnemy(spec, tier, boss, allies.length);
+      const enemy = makeEnemy(spec, tier, boss, allies.length, p.level);
       const cs = startCombat(enemy);
       setMood('combat');
       const sheet = new Sheet('combat');

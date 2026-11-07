@@ -96,7 +96,8 @@ export const tierLevel = (tier: number) => 1 + (tier - 1) * 3;
 
 /**
  * `allies` = companions fighting with you; `heroLevel` lets the deep wilds keep
- * pace with a hero who has outgrown them (the world grows with you).
+ * pace with a hero who has outgrown them (the world grows with you). Those foes
+ * are worth +10% XP per level of the gap, so levelling stays smooth past tier 5.
  */
 export function makeEnemy(spec: EnemySpec, tier: number, boss = false, allies = 0, heroLevel = 1): Enemy {
   const k = KIND_STATS[spec.kind] ?? KIND_STATS.monster;
@@ -110,7 +111,7 @@ export function makeEnemy(spec: EnemySpec, tier: number, boss = false, allies = 
     atk: 2 + tier + Math.floor((tier - 1) / 2) + (boss ? 1 : 0) + Math.floor(over / 3),
     dmgN: tier >= 4 ? 2 : 1, dmgD: [4, 6, 8, 6, 8][tier - 1] ?? 8, dmgB: Math.round((tier - 1) * DMG_STEP) + (boss ? 2 : 0) + allies + Math.floor(over / 3),
     talkDC: Math.min(22, k.talkBase + tier + (boss ? 3 : 0)), talkStat: k.talk, talkable: k.talkable,
-    xp: 30 * tier * (boss ? 3 : 1), gold: tier * randInt(3, 8) * (boss ? 3 : 1), boss, tier,
+    xp: Math.round(30 * tier * (boss ? 3 : 1) * (1 + 0.1 * over)), gold: tier * randInt(3, 8) * (boss ? 3 : 1), boss, tier,
     intent: 'attack', stun: 0, dis: 0,
     attacks: 1 + (allies >= 1 && tier >= MULTI_TIER ? 1 : 0) + (allies >= 2 && tier >= MULTI_TIER + 2 ? 1 : 0),
   };

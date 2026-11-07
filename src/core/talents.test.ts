@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createGame, addNpc } from './state';
-import { newHero, newPlayer, gainXp, checkBonus, rollD20, xpForNext, XP_LEVELS, mod } from './rules';
+import { newHero, newPlayer, gainXp, checkBonus, rollD20, xpForNext, xpStep, XP_LEVELS, mod } from './rules';
 import { TREES, ABILITIES, ROW_LEVEL, learn, learnState, abilitiesOf, modsOf, autoPick, treeSize, type AbilityId } from './talents';
 import { ensureHero, syncParty, autoLearn, classForRole, migrateSave, heroCheck, partyMods } from './companions';
 import { makeEnemy, startCombat, playRound, useBonus, canUse, partyUnits, afterFight } from './combat';
@@ -12,15 +12,44 @@ const CLS: ClassId[] = ['warrior', 'rogue', 'mage', 'bard'];
 describe('levelling', () => {
   it('climbs one level at a time all the way to 20 (no skipping past 10)', () => {
     const p = newPlayer('T', 'warrior');
-    expect(gainXp(p, 3300)).toBe(9);
+    expect(gainXp(p, XP_LEVELS[9])).toBe(9);
     expect(p.level).toBe(10);
-    expect(gainXp(p, 800)).toBe(1); // 4100 total
+    expect(gainXp(p, XP_LEVELS[10] - p.xp)).toBe(1);
     expect(p.level).toBe(11);
     gainXp(p, 1_000_000);
     expect(p.level).toBe(20);
     expect(xpForNext(20)).toBe(Infinity);
     expect(XP_LEVELS).toHaveLength(20);
-    for (let i = 1; i < XP_LEVELS.length; i++) expect(XP_LEVELS[i]).toBeGreaterThan(XP_LEVELS[i - 1]);
+  });
+  it('the XP curve is smooth: each level costs exactly 80 more than the last', () => {
+    expect(XP_LEVELS.slice(0, 5)).toEqual([0, 100, 280, 540, 880]);
+    expect(XP_LEVELS[19]).toBe(15580);
+    const steps = XP_LEVELS.slice(1).map((x, i) => x - XP_LEVELS[i]);
+    steps.forEach((st, i) => {
+      expect(st).toBe(xpStep(i + 1));
+      if (i) expect(st - steps[i - 1]).toBe(80);
+    });
+  });
+  it('encounters per level rise gently and never jump', () => {
+    // Rough average XP per encounter at the tier a hero of each level explores
+    // (events ~14·tier, fights 30·tier, quests amortised), with out-levelled fights
+    // worth more past tier 5.
+    const perEncounter = (level: number) => {
+      const tier = Math.min(5, 1 + (level - 1) / 3);
+      const over = Math.max(0, level - 13);
+      return 25 * tier + 0.4 * 30 * tier * 0.1 * over;
+    };
+    const pace = Array.from({ length: 19 }, (_, i) => xpStep(i + 1) / perEncounter(i + 1));
+    for (let i = 1; i < pace.length; i++) {
+      expect(pace[i]).toBeGreaterThan(pace[i - 1]);
+      expect(pace[i] - pace[i - 1]).toBeLessThan(1.5);
+    }
+    expect(pace[0]).toBeGreaterThan(3);
+    expect(pace[18]).toBeLessThan(11);
+  });
+  it('foes in regions you have outgrown are worth more XP', () => {
+    const base = makeEnemy({ name: 'F', kind: 'beast' }, 5, false, 0, 13).xp;
+    expect(makeEnemy({ name: 'F', kind: 'beast' }, 5, false, 0, 19).xp).toBe(Math.round(base * 1.6));
   });
   it('gives a talent point per level and stat increases at 4, 8, 12, 16, 19', () => {
     const p = newPlayer('T', 'rogue');
@@ -247,5 +276,16 @@ describe('loot sharing', () => {
     expect(s.player.bag.some((i) => i.name === 'Leather Coat')).toBe(true);
     expect(stowLoot(s, { id: 'c2', name: 'Rag', slot: 'armor', tier: 1, plus: 0 })).toBeNull();
     expect(stowLoot(s, { id: 'c3', name: 'Mithril', slot: 'armor', tier: 5, plus: 9 })).toBe('you');
+  });
+});
+
+describe('curve change on old saves', () => {
+  it('settles levels already earned on load', () => {
+    const s = createGame('T', 'rogue', 'heroic', { name: 'W', hook: 'h' });
+    s.player.level = 18; s.player.xp = 14100; // old curve: level 19 needed 14100; new needs 14040
+    s.player.points = 0;
+    migrateSave(s);
+    expect(s.player.level).toBe(19);
+    expect(s.player.asi).toBeGreaterThanOrEqual(1);
   });
 });

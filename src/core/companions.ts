@@ -1,7 +1,7 @@
 // Companions are heroes too: same classes, same levelling, same talent trees.
 // This module turns an NPC friend into a fighting party member and keeps them
 // in step with the player.
-import { CLASSES, newHero, levelUpHero, checkBonus, takeItem, itemScore, trimBag, XP_LEVELS, type Helper } from './rules';
+import { CLASSES, newHero, levelUpHero, gainXp, checkBonus, takeItem, itemScore, trimBag, XP_LEVELS, type Helper } from './rules';
 import { modsOf, mergeMods, autoPick, learn, treeSize, type Mods, type TalentNode } from './talents';
 import { hashString } from './rng';
 import type { ClassId, GameState, Hero, Item, NPC, Stat } from './types';
@@ -101,6 +101,9 @@ export function migrateSave(s: GameState) {
     ensureHero(n, Math.max(1, n.power ?? s.player.level));
     delete n.power;
   }
+  // If the XP curve changed under an old save, settle any level already earned
+  // (stat increases wait for the hero to choose; companions catch up).
+  if (gainXp(p, 0)) syncParty(s);
   return s;
 }
 
