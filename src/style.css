@@ -18,7 +18,7 @@
   --die-lo: #2e1f7a;
   --die-edge: #d9ceff;
   --safe-t: env(safe-area-inset-top, 0px);
-  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-b: max(env(safe-area-inset-bottom, 0px), var(--vp-safe-b, 0px));
   --head: 'Cinzel', Georgia, serif;
   --body: 'Alegreya', Georgia, serif;
 }
@@ -797,7 +797,7 @@ button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gol
 .party-row:not(.n1) .pchip > .float { left: 50%; }
 
 /* ---------- App update banner ---------- */
-.update-banner { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; width: min(440px, calc(100vw - 24px)); padding: 10px 10px 10px 14px; border-radius: 16px; background: rgba(15,18,34,0.97); border: 1px solid var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.6); animation: rise 0.3s ease; }
+.update-banner { position: fixed; left: 50%; bottom: calc(var(--safe-b) + 86px); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; width: min(440px, calc(100vw - 24px)); padding: 10px 10px 10px 14px; border-radius: 16px; background: rgba(15,18,34,0.97); border: 1px solid var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.6); animation: rise 0.3s ease; }
 .update-banner .ub-text { flex: 1; font-size: 0.9rem; color: var(--gold-hi); }
 .update-banner .ub-go { padding: 8px 14px; font-size: 0.9rem; }
 .update-banner .ub-later { background: none; border: 0; color: var(--muted); font-size: 1rem; padding: 6px; }
@@ -825,3 +825,7 @@ body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #hud, #dock { background-color: var(--edge-deep); }
 }
+
+/* iOS home-screen bug: the page can stop short of the screen bottom (src/ui/viewport.ts
+   measures the shortfall). Stretch every full-screen layer down into it. */
+#app, #overlay, .sheet, .modal, .dice-overlay, .screen, .rotate-note { bottom: calc(-1 * var(--vp-gap, 0px)); }

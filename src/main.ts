@@ -6,6 +6,7 @@ import { Game } from './ui/game';
 import { showTitle, showCreate, hideScreen, showLoading } from './ui/screens';
 import { toast } from './ui/dom';
 import { initUpdates } from './ui/updates';
+import { fitViewport } from './ui/viewport';
 import { setMood } from './ui/music';
 import { setAmbience, TITLE_AMBIENCE } from './ui/ambience';
 import { edgeMood } from './ui/edges';
@@ -21,6 +22,8 @@ let game: Game | null = null;
 const map = new MapView(document.getElementById('map') as HTMLCanvasElement, () => current ?? demo);
 
 // The map runs under the HUD and dock: tell the camera and the overlay UI how tall they are.
+fitViewport();
+
 function watchBars() {
   const hud = document.getElementById('hud')!, dock = document.getElementById('dock')!;
   const update = () => {

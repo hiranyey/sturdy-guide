@@ -43,7 +43,7 @@ function apply(c: RGB, alert: boolean) {
   root.setProperty('--edge-bg', css(c, 0.74));
   root.setProperty('--edge-fade', css(c, 0.5));
   root.setProperty('--edge-line', css(mix(c, [255, 215, 140], 0.35), 0.45));
-  root.setProperty('--edge-deep', css(mix(c, [0, 0, 0], 0.55)));
+  root.setProperty('--edge-deep', css(mix(c, [0, 0, 0], 0.42)));
   document.body.classList.toggle('edge-alert', alert);
   meta ??= document.querySelector('meta[name="theme-color"]');
   meta?.setAttribute('content', css(mix(c, [0, 0, 0], 0.25)));
