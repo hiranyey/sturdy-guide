@@ -49,6 +49,16 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
   return y + lineH;
 }
 
+/** How many lines `wrap` would use for this text at the current font. */
+function countLines(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
+  let line = '', lines = 1;
+  for (const w of text.split(/\s+/)) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > maxW && line) { lines++; line = w; } else line = test;
+  }
+  return lines;
+}
+
 function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
@@ -163,13 +173,26 @@ export async function renderShareCard(s: GameState, k: ShareKind): Promise<HTMLC
     ctx.fillStyle = GOLD;
     ctx.font = `600 34px ${HEAD}`;
     ctx.fillText(`DAY ${k.day} · CHAPTER COMPLETE`, W / 2, 640);
+    // The stats sit just above the footer; the recap and hook shrink to fit the space above them.
+    const STATS_Y = 1075, TEXT_TOP = 710, TEXT_BOTTOM = STATS_Y - 90;
+    let size = 40;
+    for (; size > 28; size -= 2) {
+      ctx.font = `${size}px ${BODY}`;
+      const recapH = Math.min(6, countLines(ctx, k.recap, W - 200)) * size * 1.35;
+      ctx.font = `italic ${Math.round(size * 0.85)}px ${BODY}`;
+      const hookH = Math.min(2, countLines(ctx, k.hook, W - 220)) * size * 1.15;
+      if (TEXT_TOP + recapH + 16 + hookH <= TEXT_BOTTOM) break;
+    }
+    const recapLh = size * 1.35, hookLh = size * 1.15;
+    const recapMax = Math.max(1, Math.floor((TEXT_BOTTOM - TEXT_TOP - 16 - hookLh) / recapLh));
     ctx.fillStyle = INK;
-    ctx.font = `40px ${BODY}`;
-    let y = wrap(ctx, k.recap, W / 2, 710, W - 200, 54, 5, 'center');
+    ctx.font = `${size}px ${BODY}`;
+    let y = wrap(ctx, k.recap, W / 2, TEXT_TOP, W - 200, recapLh, Math.min(6, recapMax), 'center');
     ctx.fillStyle = '#e8b07a';
-    ctx.font = `italic 34px ${BODY}`;
-    y = wrap(ctx, k.hook, W / 2, y + 16, W - 220, 46, 2, 'center');
-    statsRow(ctx, k.stats, Math.max(y + 90, 1060));
+    ctx.font = `italic ${Math.round(size * 0.85)}px ${BODY}`;
+    const hookMax = Math.max(0, Math.min(2, Math.floor((TEXT_BOTTOM + hookLh - (y + 16)) / hookLh)));
+    if (hookMax) wrap(ctx, k.hook, W / 2, y + 16, W - 220, hookLh, hookMax, 'center');
+    statsRow(ctx, k.stats, STATS_Y);
   } else if (k.kind === 'crit') {
     const glow = ctx.createRadialGradient(W / 2, 520, 20, W / 2, 520, 360);
     glow.addColorStop(0, 'rgba(255,215,106,0.55)');
