@@ -1569,8 +1569,13 @@ export class Game {
     const anyPoints = members(s).some((x) => x.hero.points > 0);
     const nextTalent = TREES[p.cls].nodes.find((n) => n.row > 1 && p.level === ROW_LEVEL[n.row]);
     if (nextTalent) body.append(h('p', { class: 'muted small center' }, `New tier unlocked: tier ${nextTalent.row} talents are open.`));
+    // Choosing talents finishes only when the talent sheet closes, so whatever comes
+    // next (a new quest, say) waits until the hero has picked.
     await new Promise<void>((res) => body.append(h('div', { class: 'row lvl-actions' },
-      anyPoints ? h('button', { class: 'btn btn-primary', onclick: () => { m.close(); res(); openTalents(s, p.points ? 'you' : members(s).find((x) => x.hero.points > 0)!.id, () => this.persist()); } }, '✦ Choose talents') : null,
+      anyPoints ? h('button', { class: 'btn btn-primary', onclick: () => {
+        m.close();
+        openTalents(s, p.points ? 'you' : members(s).find((x) => x.hero.points > 0)!.id, () => this.persist()).done.then(() => res());
+      } }, '✦ Choose talents') : null,
       h('button', { class: `btn ${anyPoints ? '' : 'btn-primary'}`, onclick: () => { m.close(); res(); } }, anyPoints ? 'Later' : 'Onward'),
     )));
     this.persist();
