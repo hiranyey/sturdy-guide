@@ -54,10 +54,12 @@ describe('blocked ways', () => {
     const [r] = placeBlocks(s, s.pos, 'rockfall', 'Rocks.');
     s.day += 2;
     expireBlocks(s);
-    expect(blockAt(s, f)).toBeNull();
-    expect(blockAt(s, r)).not.toBeNull();
+    // the stored story blocks (a storm may also flood a river hex for the day, which isn't stored)
+    const story = (h: Hex) => s.blocks?.[key(h)] ?? null;
+    expect(story(f)).toBeNull();
+    expect(story(r)).not.toBeNull();
     clearBlock(s, r);
-    expect(blockAt(s, r)).toBeNull();
+    expect(story(r)).toBeNull();
   });
 
   it('storms flood river crossings for the day', () => {

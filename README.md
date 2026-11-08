@@ -89,7 +89,7 @@ Add the secrets under **Settings → Secrets and variables → Actions**.
 2. It builds the Docker image (`linux/amd64`) and pushes it to `api.repoflow.io/hiranyeyg-6713/vibes/sturdy-guide`, tagged `:latest` and `:<commit sha>`.
 3. It calls the Vibeship webhook with that exact image digest. Vibeship pulls the image and health-checks it. Traffic only switches to the new version once it is healthy; otherwise the previous version keeps serving.
 
-The workflow runs on every push to `main` or `claude/jolly-galileo-03dgpb`, and can also be started by hand (**Run workflow**). One deploy runs at a time; later pushes queue behind it.
+The workflow runs only for `main`: on every push to it, or when started by hand on `main` (**Run workflow**). Other branches and pull requests never run it. One deploy runs at a time; later pushes queue behind it.
 
 To run the production container locally:
 

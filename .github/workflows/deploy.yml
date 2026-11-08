@@ -12,30 +12,28 @@
 # version keeps serving. Check the outcome with list_deploys or get_deploy_logs.
 name: Deploy
 
+# Only main deploys: pushes to main, or a manual run on main.
 on:
   push:
-    # The Vibeship template listens to main. This repo's default branch is
-    # claude/jolly-galileo-03dgpb, so include it or a merge there never deploys.
     branches:
       - main
-      - claude/jolly-galileo-03dgpb
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 # One deploy at a time; a newer push waits for the one in flight.
-# Pull request runs only test, and do not take that slot.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || 'deploy' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: deploy
+  cancel-in-progress: false
 
 env:
   IMAGE: api.repoflow.io/hiranyeyg-6713/vibes/sturdy-guide
 
 jobs:
   deploy:
+    # a manual run started from another branch does nothing
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -50,10 +48,8 @@ jobs:
       - run: npm test
 
       - uses: docker/setup-buildx-action@v4
-        if: github.event_name != 'pull_request'
 
       - uses: docker/login-action@v4
-        if: github.event_name != 'pull_request'
         with:
           registry: api.repoflow.io
           username: ${{ secrets.REPOFLOW_USERNAME }}
@@ -61,7 +57,6 @@ jobs:
 
       - name: Build and push
         id: build
-        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -77,7 +72,6 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Deploy
-        if: github.event_name != 'pull_request'
         shell: bash
         env:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
