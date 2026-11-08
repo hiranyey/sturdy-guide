@@ -11,6 +11,7 @@ import { checkForUpdate } from './updates';
 import { applyPrefs, speechSupported, speak, stopSpeech } from './prefs';
 import { installAvailable, offerInstall, isStandalone } from './install';
 import { resetHints } from './hints';
+import { NARRATORS, hush, testVoice, voiceReady } from './voice';
 
 export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onChange?: () => void }) {
   const sheet = new Sheet('panel', { dismissable: true });
@@ -20,6 +21,11 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
     const keyInput = h('input', { type: 'password', placeholder: 'sk-or-v1-…', value: settings.apiKey, autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
     const modelInput = h('input', { type: 'text', value: settings.model, list: 'models', spellcheck: false }) as HTMLInputElement;
     const testOut = h('div', { class: 'muted small' });
+    const dgInput = h('input', { type: 'password', placeholder: 'Deepgram API key', value: settings.dgKey, autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
+    const voiceOutEl = h('div', { class: 'muted small' });
+    const saveDg = () => { settings.dgKey = dgInput.value.trim(); saveSettings(); };
+    const narratorSel = h('select', { onchange: (e: Event) => { settings.narrator = (e.target as HTMLSelectElement).value; saveSettings(); } },
+      ...NARRATORS.map(([v, l]) => h('option', { value: v, selected: v === settings.narrator }, l))) as HTMLSelectElement;
     sheet.set(
       h('h2', null, '⚙️ Settings'),
       h('h3', null, 'AI Dungeon Master'),
@@ -64,7 +70,25 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
       slider('Music volume', settings.musicVol, (v) => { settings.musicVol = v; applyVolumes(); }),
       toggle('Ambient sounds (wind, birds, fire…)', settings.ambience, (v) => { settings.ambience = v; applyVolumes(); refreshAmbience(); }),
       slider('Ambience volume', settings.ambVol, (v) => { settings.ambVol = v; applyVolumes(); }),
-      speechSupported() ? toggle('Read story aloud', settings.readAloud, (v) => { settings.readAloud = v; if (v) speak('The story will be read aloud.'); else stopSpeech(); }) : null,
+      speechSupported() ? toggle('Read every scene aloud (device voice)', settings.readAloud, (v) => { settings.readAloud = v; if (v) speak('The story will be read aloud.'); else stopSpeech(); }) : null,
+      h('h3', null, 'Story voice'),
+      h('p', { class: 'muted small' }, 'Big story moments can be read by a natural voice from Deepgram: the opening, each new quest, the quest\'s final scene, your own ideas and turning points, the "Previously…" recap and the campfire at day\'s end. The narrator suits the story\'s tone, and each character speaks their lines in a voice of their own. Paste your Deepgram API key. A day of play costs about a cent.'),
+      h('label', { class: 'field' }, h('span', null, 'Deepgram API key'), dgInput),
+      h('label', { class: 'field' }, h('span', null, 'Narrator'), narratorSel),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn', onclick: () => { saveDg(); toast('Saved', 'good'); render(); } }, 'Save'),
+        h('button', { class: 'btn', onclick: async () => {
+          saveDg();
+          if (!settings.dgKey) { voiceOutEl.textContent = 'Paste a key first.'; return; }
+          voiceOutEl.textContent = 'Listening…';
+          const err = await testVoice();
+          voiceOutEl.textContent = err ? `✗ ${err}` : '✓ Voice ready';
+        } }, 'Test voice'),
+        settings.dgKey ? h('button', { class: 'btn', onclick: () => { settings.dgKey = ''; saveSettings(); hush(); render(); } }, 'Remove') : null,
+      ),
+      voiceOutEl,
+      settings.dgKey ? toggle('Voice big story moments', settings.voiceMoments, (v) => { settings.voiceMoments = v; if (!v) hush(); }) : null,
+      voiceReady() ? slider('Voice volume', settings.voiceVol, (v) => { settings.voiceVol = v; applyVolumes(); }) : null,
       h('h3', null, 'Accessibility'),
       segmented('Text size', [[0.9, 'S'], [1, 'M'], [1.15, 'L'], [1.3, 'XL']], settings.textScale, (v) => { settings.textScale = v; applyPrefs(); render(); }),
       toggle('Reduce motion', settings.reduceMotion, (v) => { settings.reduceMotion = v; applyPrefs(); }),

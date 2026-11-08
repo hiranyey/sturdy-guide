@@ -12,6 +12,9 @@ let sfxVerb: GainNode | null = null;
 let musicVerb: GainNode | null = null;
 let ambVerb: GainNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
+let voiceBus: GainNode | null = null;
+/** music and ambience sit lower while a voice speaks */
+let ducked = false;
 
 /** A generated impulse response: decaying stereo noise. */
 function impulse(c: AudioContext, seconds: number, decay: number) {
@@ -80,8 +83,10 @@ export function applyVolumes() {
   if (!ctx || !sfxBus || !musicBus || !ambBus) return;
   const t = ctx.currentTime;
   sfxBus.gain.setTargetAtTime(settings.sound ? settings.sfxVol : 0, t, 0.05);
-  musicBus.gain.setTargetAtTime(settings.music ? settings.musicVol * 0.55 : 0, t, 0.3);
-  ambBus.gain.setTargetAtTime(settings.ambience ? settings.ambVol * 0.7 : 0, t, 0.3);
+  const under = ducked ? 0.35 : 1;
+  musicBus.gain.setTargetAtTime(settings.music ? settings.musicVol * 0.55 * under : 0, t, 0.3);
+  ambBus.gain.setTargetAtTime(settings.ambience ? settings.ambVol * 0.7 * under : 0, t, 0.3);
+  voiceBus?.gain.setTargetAtTime(settings.voiceVol, t, 0.05);
 }
 
 export function musicOut(): GainNode | null { audioCtx(); return musicBus; }
@@ -89,6 +94,25 @@ export function musicVerbIn(): GainNode | null { audioCtx(); return musicVerb; }
 export function ambienceOut(): GainNode | null { audioCtx(); return ambBus; }
 export function ambienceVerbIn(): GainNode | null { audioCtx(); return ambVerb; }
 export function noise(): AudioBuffer | null { audioCtx(); return noiseBuf; }
+
+/** Where spoken lines go (src/ui/voice.ts): dry, own volume. */
+export function voiceOut(): GainNode | null {
+  const c = audioCtx();
+  if (!c) return null;
+  if (!voiceBus) {
+    voiceBus = c.createGain();
+    voiceBus.gain.value = settings.voiceVol;
+    voiceBus.connect(c.destination);
+  }
+  return voiceBus;
+}
+
+/** Lower music and ambience under a voice, or bring them back. */
+export function duck(on: boolean) {
+  if (ducked === on) return;
+  ducked = on;
+  applyVolumes();
+}
 
 function sfx_ctx() {
   if (!settings.sound || settings.sfxVol <= 0) return null;

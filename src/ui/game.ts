@@ -5,7 +5,8 @@ import { edgeScene, edgeMood } from './edges';
 import { setWeather } from './weather-fx';
 import { weatherAt, WEATHER_INFO, type Weather } from '../core/weather';
 import { blockAt, canEnter, placeBlocks, clearBlock, expireBlocks, BLOCK_INFO } from '../core/blocks';
-import { speak, stopSpeech, announce } from './prefs';
+import { announce } from './prefs';
+import { say, hush, narrate, castLines, guessVoice, setStoryTone, type Speaker } from './voice';
 import { hint, dismissHint } from './hints';
 import { offerInstall } from './install';
 import { shareCard } from './share';
@@ -61,8 +62,12 @@ export class Game {
   private mapUi = $('#map-ui');
   private ticker!: HTMLElement;
 
+  /** characters who may speak in the scene on screen (for voiced moments) */
+  private cast: { main: Speaker | null; all: Speaker[] } = { main: null, all: [] };
+
   constructor(public s: GameState, private map: MapView, private onQuit: () => void) {
     map.demo = false;
+    setStoryTone(s.tone);
     map.onTap = (hex) => this.onTap(hex);
     map.onLongPress = (hex, x, y) => { dismissHint('inspect'); this.tileInfo(hex, x, y); };
     map.onFollowChange = (f) => this.mapUi.classList.toggle('free-cam', !f);
@@ -395,7 +400,7 @@ export class Game {
       h('h1', { class: 'intro-title' }, this.s.world.name),
       text,
     );
-    speak(this.s.world.hook);
+    void narrate([this.s.world.hook]);
     await typewrite(text, this.s.world.hook, 1);
     await new Promise<void>((res) => m.card.append(
       h('div', { class: 'tip' }, '🔥 Each day you carry 12 torches. Every step burns one. When they run out, make camp — your story is saved and summarised. Perfect for short sessions.'),
@@ -428,6 +433,7 @@ export class Game {
       this.omen() ? h('div', { class: 'omen-card' }, h('b', null, `${this.omen()!.icon} Today's omen: ${this.omen()!.name}`), h('span', null, this.omen()!.desc)) : null,
       h('div', { class: 'today small' }, `Day ${s.day} · ${s.stamina} torches remain`),
     ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => !!x));
+    if (s.recap) void narrate([`Previously, in ${s.world.name}. ${s.recap}`, s.hook]);
     await new Promise<void>((res) => m.card.append(h('button', { class: 'btn btn-primary', onclick: () => { m.close(); res(); } }, 'Continue the tale')));
   }
 
@@ -452,6 +458,7 @@ export class Game {
         h('p', null, q.description),
         h('p', { class: 'muted' }, `Seek ${q.place}, ${distance(s.pos, target)} hexes to the ${dir}. Follow the golden beacon.`),
       );
+      void narrate([`A new quest. ${q.title}. ${q.description}`]);
       await new Promise<void>((res) => m.card.append(h('button', { class: 'btn btn-primary', onclick: () => { m.close(); res(); } }, 'Onward')));
     }
   }
@@ -752,7 +759,7 @@ export class Game {
     await sheet.done;
     if (s.pending?.ev === ev) s.pending = null;
     save(s);
-    stopSpeech();
+    hush();
     this.persist();
   }
 
@@ -777,7 +784,16 @@ export class Game {
       choicesEl,
     );
     sheet.set(card);
-    speak(`${ev.title}. ${ev.text}`);
+    // who might speak in this scene (and in its outcome); a character written without a voice gets one from the scene
+    if (ev.npc && !ev.npc.voice) {
+      const known = Object.values(this.s.npcs).find((n) => n.name === ev.npc!.name)?.voice;
+      const v = known ?? guessVoice(`${ev.npc.look} ${ev.npc.role} ${ev.text}`);
+      if (v) ev.npc.voice = v;
+    }
+    this.cast = { main: ev.npc, all: [...(ev.npc ? [ev.npc] : []), ...party(this.s)] };
+    // the quest's climax and other special moments are voiced, each character in their own voice
+    if (ctx.poi === 'quest' || isOpenMoment(ev, ctx)) void narrate([`${ev.title}.`, ...castLines(ev.text, this.cast.all, this.cast.main)]);
+    else say(`${ev.title}. ${ev.text}`);
     await typewrite(text, ev.text, 2);
     for (const c of ev.choices) {
       choicesEl.appendChild(this.choiceButton(c, () => this.resolveChoice(sheet, card, choicesEl, ev, c, ctx), ctx.tier, ctx.poi === 'quest'));
@@ -1044,7 +1060,8 @@ export class Game {
     choicesEl.replaceWith(block);
     block.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     if (effects.some((e) => e.includes('gold') && !e.startsWith('-'))) sfx.coin();
-    speak(text);
+    if (turn) void narrate([...castLines(text, this.cast.all, this.cast.main), `Turning point. ${turn.title}. ${turn.text}`]);
+    else say(text);
     announce(`${text} ${effects.join(', ')}`);
     await typewrite(t, text, 2);
     const s = this.s;
@@ -1747,12 +1764,12 @@ export class Game {
       h('button', { class: 'btn wide', onclick: () => shareCard(s, { kind: 'chapter', day: s.day, recap: out.recap, hook: out.hook, stats: [[String(explored), 'explored'], [String(events), 'deeds'], [String(kills), 'foes'], [`${goldDelta >= 0 ? '+' : ''}${goldDelta}`, 'gold']] }) }, '📤 Share this chapter'),
       h('button', { class: 'btn btn-primary wide', onclick: () => sheet.close() }, '🌅 Sleep until dawn'),
     ));
-    speak(`${out.recap} ${out.hook}`);
+    void narrate([out.recap, ...(comp ? castLines(out.banter, [comp], comp, true) : [out.banter]), out.hook]);
     this.persist();
     await sheet.done;
     s.day++;
     this.healParty();
-    stopSpeech();
+    hush();
     const omen = startDay(s);
     expireBlocks(s);
     trackSeen(s, 'omens', omen.id);

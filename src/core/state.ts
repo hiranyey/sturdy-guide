@@ -95,13 +95,17 @@ export function chapterLog(s: GameState) {
 
 export function addNpc(s: GameState, spec: NpcSpec, where: string): NPC {
   const existing = Object.values(s.npcs).find((n) => n.name === spec.name);
-  if (existing) return existing;
+  if (existing) {
+    if (!existing.voice && spec.voice) existing.voice = spec.voice;
+    return existing;
+  }
   const id = `n${Object.keys(s.npcs).length + 1}`;
   const npc: NPC = {
     id, name: spec.name, role: spec.role || 'traveller', look: spec.look || '', personality: spec.personality || '',
     affinity: 0, memories: [], metDay: s.day, where, inParty: false,
   };
   if (spec.cls) npc.cls = spec.cls;
+  if (spec.voice) npc.voice = spec.voice;
   s.npcs[id] = npc;
   return npc;
 }

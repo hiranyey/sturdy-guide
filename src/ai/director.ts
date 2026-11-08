@@ -15,7 +15,7 @@ import { talent } from '../core/talents';
 import { weatherAt, WEATHER_INFO } from '../core/weather';
 import { BLOCK_KINDS, blocksNear, type BlockKind } from '../core/blocks';
 import type {
-  Biome, Choice, ClassId, EnemyKind, EventContext, GameEvent, GameState, NpcSpec, RegionInfo, RewardKind, Stat, Tone,
+  Biome, Choice, ClassId, VoiceHint, EnemyKind, EventContext, GameEvent, GameState, NpcSpec, RegionInfo, RewardKind, Stat, Tone,
 } from '../core/types';
 
 const TONE_GUIDE: Record<Tone, string> = {
@@ -161,6 +161,24 @@ export function baseFallback(ctx: EventContext): GameEvent {
   return lm?.event ? lm.event(ctx) : fallbackEvent(ctx);
 }
 
+/** A character's voice from the model ("feminine mature", "masculine deep") or from a stored hint. */
+export function parseVoice(v: unknown): VoiceHint | undefined {
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    v = [o.gender, o.age, o.deep === true ? 'deep' : ''].filter((x) => typeof x === 'string').join(' ');
+  }
+  if (typeof v !== 'string') return undefined;
+  const t = v.toLowerCase();
+  const out: VoiceHint = {};
+  if (/\b(feminine|female|woman|girl|she)\b/.test(t)) out.gender = 'feminine';
+  else if (/\b(masculine|male|man|boy|he)\b/.test(t)) out.gender = 'masculine';
+  if (/\b(young|child|youth|teen)/.test(t)) out.age = 'young';
+  else if (/\b(mature|old|elder|aged)\b/.test(t)) out.age = 'mature';
+  else if (/\badult\b/.test(t)) out.age = 'adult';
+  if (/\b(deep|gruff|booming|growl)/.test(t)) out.deep = true;
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
   const fb = baseFallback(ctx);
   const ev: GameEvent = {
@@ -174,6 +192,8 @@ export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
     ev.npc = { name: clip(raw.npc.name, 40), role: clip(raw.npc.role, 40, 'traveller'), look: clip(raw.npc.look, 100), personality: clip(raw.npc.personality, 80) } as NpcSpec;
     const cls = String(raw.npc.class ?? raw.npc.cls ?? '').toLowerCase();
     if (cls in CLASSES) ev.npc.cls = cls as ClassId;
+    const voice = parseVoice(raw.npc.voice);
+    if (voice) ev.npc.voice = voice;
   }
   const maxDc = Math.min(20, 12 + ctx.tier * 2);
   for (const c of Array.isArray(raw?.choices) ? raw.choices : []) {
@@ -233,7 +253,7 @@ Context: ${JSON.stringify(storyContext(s))}
 Return JSON:
 {"title": "2-5 words",
  "text": "the scene, 30-60 words, ending with a clear choice to make",
- "npc": null or {"name": "...", "role": "...", "look": "short visual description", "personality": "3-6 words", "class": "warrior|rogue|mage|bard" (how they'd fight if they joined the party)},
+ "npc": null or {"name": "...", "role": "...", "look": "short visual description", "personality": "3-6 words", "class": "warrior|rogue|mage|bard" (how they'd fight if they joined the party), "voice": "how they sound, e.g. \"feminine young\", \"masculine mature deep\": feminine or masculine, then young, adult or mature, plus deep if gruff or booming"},
  "open": true only if this is a turning point where the hero might well try something of their own (a tense negotiation, a mystery, a moral choice, a strange power); at most 1 scene in 4,
  "choices": [ 3 or 4 options, each:
    {"label": "imperative, max 6 simple words, so the player knows exactly what it does", "kind": "check" | "fight" | "trade" | "rest" | "leave",

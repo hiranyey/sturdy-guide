@@ -78,6 +78,8 @@ export interface NPC {
   hero?: Hero;
   /** class they'll have when they join (from the story, or guessed from their role) */
   cls?: ClassId;
+  /** how they sound when voiced */
+  voice?: VoiceHint;
   /** @deprecated pre-talent saves: companion strength, migrated into `hero` */
   power?: number;
 }
@@ -168,7 +170,10 @@ export interface Choice {
   adv?: 1;
 }
 
-export interface NpcSpec { name: string; role: string; look: string; personality: string; cls?: ClassId }
+/** How a character sounds, for voiced story moments (src/ui/voice.ts). */
+export interface VoiceHint { gender?: 'masculine' | 'feminine'; age?: 'young' | 'adult' | 'mature'; deep?: boolean }
+
+export interface NpcSpec { name: string; role: string; look: string; personality: string; cls?: ClassId; voice?: VoiceHint }
 
 export interface GameEvent {
   title: string;

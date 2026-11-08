@@ -17,6 +17,12 @@ export interface Settings {
   foresight: boolean;
   /** storyteller writes short, plain sentences (off = richer prose) */
   plainStory: boolean;
+  /** Deepgram API key for voiced story moments (src/ui/voice.ts) */
+  dgKey: string;
+  voiceMoments: boolean;
+  /** Deepgram Aura-2 voice name for the narrator, or 'auto' (follows the story's tone) */
+  narrator: string;
+  voiceVol: number; // 0..1
 }
 
 const KEY = 'hexbound.settings';
@@ -38,6 +44,7 @@ const defaults: Settings = {
   apiKey: '', model: DEFAULT_MODEL, tapToRoll: true, sound: true, textSpeed: 2,
   sfxVol: 0.8, music: true, musicVol: 0.45, ambience: true, ambVol: 0.6, textScale: 1, reduceMotion: prefersReducedMotion, readAloud: false,
   installDismissedAt: 0, foresight: true, plainStory: true,
+  dgKey: '', voiceMoments: true, narrator: 'auto', voiceVol: 0.9,
 };
 
 export const settings: Settings = (() => {
