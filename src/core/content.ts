@@ -112,7 +112,7 @@ const POI_EVENTS: Record<PoiKind | 'wild' | 'quest', EventMaker[]> = {
       return { title: 'A Crooked Inn', text: `Smoke curls from the chimney of the Gilded Goose. ${npc.name}, the innkeeper, eyes your boots and grins: "Mud from ${ctx.regionName}, eh? Got stories?"`, npc, choices: [
         { label: 'Tell a rousing tale', kind: 'check', stat: 'cha', dc: tierDc(10, ctx), reward: 'ally' },
         { label: 'Browse the market', kind: 'trade' },
-        { label: 'Rent a bed (10g)', kind: 'rest' },
+        { label: 'Rent a bed', kind: 'rest' },
         { label: 'Wander on', kind: 'leave' },
       ] };
     },

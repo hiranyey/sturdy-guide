@@ -23,7 +23,7 @@ import { sceneArt, combatBackdrop, type SceneTime } from './art/scenes';
 import { itemArt, potionArt, goldArt } from './art/items';
 import { openSettings } from './settings-sheet';
 import { key, eq, distance, toPixel, compass, spiral, type Hex } from '../core/hex';
-import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, BIOME_INFO } from '../core/world';
+import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, visionRadius, BIOME_INFO } from '../core/world';
 import { save, reveal, log, party, remember, addNpc, chapterLog, startDay, hasOmen, addTurn } from '../core/state';
 import {
   CLASSES, armorClass, attackBonus, fmtMod, mod, xpForNext, XP_LEVELS, heal, randomItem, itemDesc,
@@ -32,7 +32,9 @@ import {
 import { heroCheck, partyMods, ensureHero, syncParty, unspent, classForRole, stowLoot, lootNote } from '../core/companions';
 import { ABILITIES, abilitiesOf, TREES, ROW_LEVEL, type AbilityId } from '../core/talents';
 import { openTalents, companionCard, avatar, members, abilityChips } from './talents-ui';
-import { applyCheck, questRewards, goldMult, type Effects } from '../core/resolve';
+import { applyCheck, questRewards, goldMult, defeatLoss, type Effects } from '../core/resolve';
+import { canPay, cantPay, pay, costText, shapeChoices } from '../core/choices';
+import { signAt, spendSign, momentFor, takeMoment, gainText, SIGNS, type Sign } from '../core/encounters';
 import { makeEnemy, startCombat, playRound, useBonus, intentText, canUse, partyUnits, usesLeft, unitAc, unitAtk, potionHeal, afterFight, isDown, type Action, type Beat } from '../core/combat';
 import { FLAVOR, ENEMIES, ENEMY_INTRO, AWAY_GIFTS, OMENS, STYLE_FLAVOR, RIVER_FLAVOR } from '../core/content';
 import { landmarkAt, LANDMARKS, terrainName, riverAt, styleAt, type LandmarkKind } from '../core/terrain';
@@ -51,7 +53,6 @@ const POI_LABEL: Record<string, string> = {
 
 export class Game {
   private busy = false;
-  private calm = 1;
   /** steps taken this session, for the long-press tip */
   private walked = 0;
   /** weather where the hero stands, and a line announcing a change */
@@ -217,17 +218,15 @@ export class Game {
         wants.push({ key: `lm:${k}`, dist: d, make: () => (s.tiles[k]?.lm ? null : ctxAt(hx, 'wild', { landmark: lmk })) });
       }
     }
-    // Spare wilderness scenes for the terrain underfoot and next door (they only
-    // happen now and then, so places come first).
-    const biomes = new Map<string, Hex>();
-    for (const hx of spiral(s.pos, 1)) {
-      const b = biomeAt(hx, s.seed);
-      if (isPassable(hx, s.seed) && !biomes.has(b)) biomes.set(b, hx);
+    // Spare wilderness scenes for the terrain of the ❔ signs nearby (the map
+    // shows them, so we know which terrain the next scene needs).
+    const biomes = new Map<string, { hx: Hex; d: number }>();
+    for (const hx of spiral(s.pos, 2)) {
+      if (eq(hx, s.pos) || signAt(s, hx)?.kind !== 'scene') continue;
+      const b = biomeAt(hx, s.seed), d = distance(s.pos, hx);
+      if (!biomes.has(b) || biomes.get(b)!.d > d) biomes.set(b, { hx, d });
     }
-    for (const [b, hx] of biomes) {
-      const here = eq(hx, s.pos) || biomeAt(s.pos, s.seed) === b;
-      wants.push({ key: `wild:${b}`, dist: here ? 1.5 : 2.5, make: () => ctxAt(hx, 'wild') });
-    }
+    for (const [b, { hx, d }] of biomes) wants.push({ key: `wild:${b}`, dist: d + 0.5, make: () => ctxAt(hx, 'wild') });
     this.foresight.plan(wants, (d) => (d < 2 ? 2 : 1));
   }
 
@@ -300,6 +299,8 @@ export class Game {
     if (poi && poi !== 'start') rows.push(['Place', `${POI_LABEL[poi] ?? poi}${mem.done ? ' ✓ visited' : ''}`]);
     if (lm) rows.push(['Landmark', `${LANDMARKS[lm].icon} ${LANDMARKS[lm].name}${mem.lm ? ' ✓' : ''}`]);
     if (riverAt(hx, s.seed)) rows.push(['Water', '🌊 Stream (fordable)']);
+    const sg = distance(s.pos, hx) <= Math.max(2, visionRadius(s.pos, s.seed)) && !eq(hx, s.pos) ? signAt(s, hx) : null;
+    if (sg) rows.push(['Waiting', sg.kind === 'foe' && sg.enemy ? `${sg.enemy.emoji ?? '⚔️'} ${sg.enemy.name}` : `${SIGNS[sg.kind].icon} ${SIGNS[sg.kind].desc}`]);
     const bl = blockAt(s, hx);
     if (bl) rows.push(['Blocked', `${BLOCK_INFO[bl.kind].icon} ${bl.reason}${bl.until !== undefined ? ` (until day ${bl.until + 1})` : ''}`]);
     rows.push(['Danger', '☠'.repeat(tierAt(hx))]);
@@ -362,6 +363,7 @@ export class Game {
     this.foresee();
     // First journey on this device: how to get going.
     hint('walk', 'Tap a hex to walk there. Each step burns one 🔥 torch.');
+    hint('signs', 'Icons near you show what waits there: ⚔️ a foe, ❔ a scene, 👣 a quick choice, 💰 loot, 🌿 herbs. Pick your path!');
     if (this.s.quest) hint('beacon', 'The golden ★ beacon marks your quest; the bar up top shows how far it is.', 'top');
     if (this.s.stamina <= 0) this.confirmCamp(true);
   }
@@ -507,7 +509,10 @@ export class Game {
       } else this.setTicker(`${BLOCK_INFO[blocked.kind].icon} ${blocked.reason} Get next to it to deal with it.`);
       return;
     }
-    const path = findPath(s.pos, target, s.seed, (hx) => !!s.revealed[key(hx)] && canEnter(s, hx));
+    const open = (hx: Hex) => !!s.revealed[key(hx)] && canEnter(s, hx);
+    // walk around foes on the way unless you aimed at one
+    const path = findPath(s.pos, target, s.seed, (hx) => open(hx) && (eq(hx, target) || signAt(s, hx)?.kind !== 'foe'))
+      ?? findPath(s.pos, target, s.seed, open);
     if (!path || !path.length) {
       this.map.flashTile(target, false);
       this.setTicker('No known path leads there.');
@@ -611,6 +616,8 @@ export class Game {
   private async enterTile(hx: Hex): Promise<boolean> {
     const s = this.s;
     const k = key(hx);
+    // what waits here (read before the tile counts as walked)
+    const sign = signAt(s, hx);
     const mem = (s.tiles[k] ||= {});
     const first = !mem.v;
     if (first) {
@@ -642,7 +649,6 @@ export class Game {
     if (lmk && !mem.lm) {
       mem.lm = 1;
       trackSeen(s, 'landmarks', lmk);
-      this.calm = 1;
       if (LANDMARKS[lmk].event) {
         await this.runEvent({ hex: hx, biome, poi: 'wild', tier, regionName: this.regionName(hx), landmark: lmk });
         return true;
@@ -650,49 +656,93 @@ export class Game {
       await this.discoverLandmark(lmk, tier);
       return false;
     }
-    if (this.calm > 0) {
-      this.calm--;
+    if (!sign) {
       this.setTicker(this.flavor(hx));
       return false;
     }
-    const danger = BIOME_INFO[biome].danger;
-    const roll = Math.random();
-    const enc = 0.1 * danger * (first ? 1 : 0.4) * (hasOmen(s, 'blood-moon') ? 1.6 : hasOmen(s, 'still-air') ? 0.45 : 1);
-    const wild = enc + 0.11 * (first ? 1 : 0.3);
-    const find = wild + 0.07;
-    if (roll < enc) {
-      const spec = pick(ENEMIES[biome].length ? ENEMIES[biome] : ENEMIES.grass);
-      const result = await this.combat(spec, tier, false, pick(ENEMY_INTRO).replace('{e}', `A ${spec.name}`));
-      this.afterCombatLog(spec, result);
-      this.calm = 2;
-      return true;
-    }
-    if (roll < wild) {
-      await this.runEvent({ hex: hx, biome, poi: 'wild', tier, regionName: this.regionName(hx) });
-      this.calm = 2;
-      return true;
-    }
-    if (roll < find) {
-      const r = Math.random();
-      if (r < 0.45) {
-        const g = randInt(2, 6) * tier;
-        s.player.gold += g;
-        sfx.coin();
-        toast(`You find ${g} gold glinting in the dirt.`, 'gold');
-      } else if (r < 0.75 && s.player.potions < 6) {
-        s.player.potions++;
-        sfx.coin();
-        toast('You find a stoppered potion in an old satchel. 🧪', 'good');
-      } else {
-        const h2 = heal(s.player, rollDice(1, 6)[0] + tier);
-        sfx.heal();
-        toast(`Wild herbs soothe your wounds (+${h2} HP).`, 'good');
+    spendSign(s, hx);
+    switch (sign.kind) {
+      case 'foe': {
+        const spec = sign.enemy ?? pick(ENEMIES[biome].length ? ENEMIES[biome] : ENEMIES.grass);
+        const result = await this.combat(spec, tier, false, pick(ENEMY_INTRO).replace('{e}', `A ${spec.name}`));
+        this.afterCombatLog(spec, result);
+        return true;
       }
-      this.calm = 1;
-      return false;
+      case 'scene':
+        await this.runEvent({ hex: hx, biome, poi: 'wild', tier, regionName: this.regionName(hx) });
+        return true;
+      case 'moment':
+        await this.quickMoment(sign, tier);
+        return true;
+      case 'cache': {
+        if (Math.random() < 0.6 || s.player.potions >= 6) {
+          const g = randInt(3, 7) * tier;
+          s.player.gold += g;
+          sfx.coin();
+          toast(`💰 You find ${g} gold in a hidden stash.`, 'gold');
+        } else {
+          s.player.potions++;
+          sfx.coin();
+          toast('💰 You find a stoppered potion in an old satchel. 🧪', 'good');
+        }
+        return false;
+      }
+      case 'herbs': {
+        const h2 = heal(s.player, rollDice(1, 6)[0] + 1 + tier);
+        sfx.heal();
+        toast(h2 ? `🌿 Wild herbs soothe your wounds (+${h2} HP).` : '🌿 Healing herbs grow here. You don\'t need them now.', 'good');
+        if (!h2) delete mem.e; // still there for later today
+        return false;
+      }
     }
-    this.setTicker(this.flavor(hx));
     return false;
+  }
+
+  /** A quick choice on the road: two options with a clear price, one tap, no dice. */
+  private quickMoment(sign: Sign, tier: number): Promise<void> {
+    const s = this.s;
+    const m = momentFor(sign, tier);
+    const sheet = new Sheet('event', { dismissable: true });
+    const choices = h('div', { class: 'choices' });
+    for (const opt of m.options) {
+      const affordable = canPay(s, opt.cost);
+      const price = costText(opt.cost);
+      const gives = gainText(opt.gain);
+      const odds = opt.odds !== undefined ? `${Math.round(opt.odds * 100)}%` : '';
+      choices.append(h('button', {
+        class: `choice choice-check${affordable ? '' : ' cant'}`,
+        'aria-label': `${opt.label}.${price ? ` Costs ${price}.` : ''} ${gives}${odds ? `, ${odds} chance` : ''}.`,
+        onclick: () => {
+          if (!affordable) { toast(cantPay(s, opt.cost!), 'bad'); sfx.deny(); return; }
+          sfx.tap();
+          const res = takeMoment(s, opt);
+          if (res.lines.some((l) => l.includes('HP') && l.startsWith('+'))) sfx.heal();
+          else if (res.lines.some((l) => l.includes('gold') && l.startsWith('+'))) sfx.coin();
+          log(s, `${m.title.toLowerCase()}: chose to ${opt.label.toLowerCase()}`, 'info');
+          toast(`${res.text}${res.lines.length ? ` (${res.lines.join(', ')})` : ''}`, res.good ? 'good' : 'bad', 3400);
+          announce(`${res.text} ${res.lines.join(', ')}`);
+          this.renderHud();
+          this.persist();
+          sheet.close();
+          if (res.levels) void this.levelUp(res.levels);
+        },
+      },
+        h('span', { class: 'clabel' }, opt.label,
+          h('span', { class: 'cmeta', 'aria-hidden': 'true' },
+            price ? h('span', { class: `cchip cost${affordable ? '' : ' short'}` }, price) : null,
+            gives ? h('span', { class: 'cchip gain' }, gives) : null)),
+        h('span', { class: `cbadge ${odds ? (opt.odds! >= 0.7 ? 'fair' : 'hard') : 'easy'}` }, odds || 'SURE')));
+    }
+    choices.append(h('button', { class: 'choice choice-leave', onclick: () => { sfx.tap(); sheet.close(); } },
+      h('span', { class: 'clabel' }, 'Walk on'), h('span', { class: 'cbadge leave' }, 'LEAVE')));
+    sheet.set(h('div', { class: 'parchment moment' },
+      h('div', { class: 'ev-kind' }, `${SIGNS.moment.icon} On the road · ${this.regionName(s.pos)}`),
+      h('h2', { class: 'ev-title' }, m.title),
+      h('p', { class: 'ev-text' }, m.text),
+      choices));
+    say(`${m.title}. ${m.text}`);
+    hint('moment', 'A quick choice: each option shows what it costs and what it gives. No dice.', 'top');
+    return sheet.done.then(() => hush());
   }
 
   private regionName(hx: Hex) {
@@ -752,6 +802,8 @@ export class Game {
       if (ready) ({ ctx, ev } = ready);
       else ev = await genEvent(s, ctx);
     }
+    // Trade-offs: prices, a bold move, a paid sure thing (once per scene).
+    shapeChoices(s, ev, ctx);
     // Remember the open event so closing the app mid-choice brings it back.
     s.pending = { ctx, ev };
     save(s);
@@ -798,6 +850,7 @@ export class Game {
     for (const c of ev.choices) {
       choicesEl.appendChild(this.choiceButton(c, () => this.resolveChoice(sheet, card, choicesEl, ev, c, ctx), ctx.tier, ctx.poi === 'quest'));
     }
+    if (ev.choices.some((c) => c.bold || c.sure)) hint('tradeoff', '×2 bold choices pay double but hurt more if they fail. SURE choices cost something up front, but always work.', 'top');
     if (isOpenMoment(ev, ctx)) {
       choicesEl.appendChild(this.writeYourOwn(sheet, card, choicesEl, ev, ctx));
       hint('freeform', 'A turning point! Tap ✍️ to write your own action: the Dungeon Master sets the roll.', 'top', true);
@@ -873,7 +926,9 @@ export class Game {
   private choiceButton(c: Choice, onClick: () => void, tier = 1, boss = false) {
     const p = this.s.player;
     let badge: HTMLElement;
-    if (c.kind === 'check' && c.stat && c.dc) {
+    if (c.sure) {
+      badge = h('span', { class: 'cbadge easy' }, 'SURE');
+    } else if (c.kind === 'check' && c.stat && c.dc) {
       const b = heroCheck(this.s, c.stat).total;
       const pct = Math.min(95, Math.max(5, ((21 - (c.dc - b)) / 20) * 100));
       badge = h('span', { class: `cbadge ${pct >= 65 ? 'easy' : pct >= 40 ? 'fair' : 'hard'}` }, `${c.stat.toUpperCase()} ${c.dc}`);
@@ -885,18 +940,32 @@ export class Game {
     const rewardIcon: Record<string, string> = { gold: '🪙', item: '🎁', ally: '♥', heal: '✚', lore: '🗺', xp: '★' };
     const rewardText: Record<string, string> = { gold: 'Gold', item: 'An item', ally: 'Win a friend', heal: 'Healing', lore: 'Knowledge & map reveal', xp: 'Experience' };
     let aria = c.label;
-    if (c.kind === 'check' && c.stat && c.dc) {
+    const hurt = p.hp < p.maxHp * 0.5;
+    const price = costText(c.cost);
+    const affordable = canPay(this.s, c.cost);
+    if (c.sure) aria += `. No roll needed${c.reward ? `: ${rewardText[c.reward]}` : ''}.`;
+    else if (c.kind === 'check' && c.stat && c.dc) {
       const cb = heroCheck(this.s, c.stat);
       aria += `. ${STAT_NAMES[c.stat]} check, DC ${c.dc}, ${Math.round(successChance(cb.total, c.dc) * 100)} percent chance.`;
     } else aria += `. ${c.kind}.`;
-    const btn = h('button', { class: `choice choice-${c.kind}`, 'aria-label': aria, onclick: () => { sfx.tap(); onClick(); } },
+    if (c.bold) aria += ' Bold: double reward, and failing hurts more.';
+    if (price) aria += ` Costs ${price}.${affordable ? '' : ' You can’t afford it.'}`;
+    const btn = h('button', { class: `choice choice-${c.kind}${c.bold ? ' bold' : ''}${affordable ? '' : ' cant'}`, 'aria-label': aria, onclick: () => { sfx.tap(); onClick(); } },
       c.kind === 'fight' && c.enemy ? h('span', { class: 'choice-foe', 'aria-hidden': 'true', html: foeArt(c.enemy, { tier, boss }) }) : null,
-      h('span', { class: 'clabel' }, c.label, c.reward ? h('span', { class: 'rhint', 'aria-hidden': 'true' }, rewardIcon[c.reward]) : null),
+      h('span', { class: 'clabel' }, c.label, c.reward ? h('span', { class: `rhint${c.reward === 'heal' && hurt ? ' need' : ''}`, 'aria-hidden': 'true' }, rewardIcon[c.reward]) : null,
+        c.bold || price ? h('span', { class: 'cmeta', 'aria-hidden': 'true' },
+          c.bold ? h('span', { class: 'cchip bold' }, '×2 bold') : null,
+          price ? h('span', { class: `cchip cost${affordable ? '' : ' short'}` }, price) : null) : null),
       badge,
     );
     // Press and hold a choice to see exactly what you are getting into.
     longPress(btn, (x, y) => {
-      if (c.kind === 'check' && c.stat && c.dc) {
+      if (c.sure) {
+        popover(x, y, h('b', null, c.label),
+          h('div', { class: 'pv-row' }, h('span', null, 'Roll'), h('span', null, 'None: it simply works')),
+          price ? h('div', { class: 'pv-row' }, h('span', null, 'Costs'), h('span', null, price)) : null,
+          c.reward ? h('div', { class: 'pv-row' }, h('span', null, 'You get'), h('span', null, `${rewardIcon[c.reward]} ${rewardText[c.reward]}`)) : null);
+      } else if (c.kind === 'check' && c.stat && c.dc) {
         const cb = heroCheck(this.s, c.stat);
         const pct = Math.round(successChance(cb.total, c.dc) * 100);
         popover(x, y, h('b', null, `${STAT_NAMES[c.stat]} check · DC ${c.dc}`),
@@ -904,9 +973,11 @@ export class Game {
           h('div', { class: 'pv-row' }, h('span', null, 'Need'), h('span', null, `${Math.max(2, c.dc - cb.total)}+ on the die`)),
           h('div', { class: 'pv-row' }, h('span', null, 'Chance'), h('span', null, `${pct}%${p.inspiration ? ` (${Math.round(successChance(cb.total, c.dc, 1) * 100)}% with ✨)` : ''}`)),
           c.reward ? h('div', { class: 'pv-row' }, h('span', null, 'On success'), h('span', null, `${rewardIcon[c.reward]} ${rewardText[c.reward]}`)) : null,
+          price ? h('div', { class: 'pv-row' }, h('span', null, 'Costs'), h('span', null, price)) : null,
+          c.bold ? h('div', { class: 'pv-lore' }, 'Bold: the reward is doubled, and failing hurts more.') : null,
           h('div', { class: 'pv-lore' }, ['str', 'dex', 'con'].includes(c.stat) ? 'Failing hurts: you may lose HP.' : 'Failing costs time: you may lose a torch.'));
       } else {
-        const what: Record<string, string> = { fight: `Starts a fight${c.enemy ? ` with ${c.enemy.name}` : ''}.`, trade: 'Opens the market: buy potions and gear, sell loot.', rest: 'Rest to recover HP.', leave: 'Walk away. Nothing gained, nothing lost.' };
+        const what: Record<string, string> = { fight: `Starts a fight${c.enemy ? ` with ${c.enemy.name}` : ''}.`, trade: 'Opens the market: buy potions and gear, sell loot.', rest: `Rest to recover HP${price ? ` (costs ${price})` : ''}.`, leave: 'Walk away. Nothing gained, nothing lost.' };
         popover(x, y, h('b', null, c.label), h('div', { class: 'pv-lore' }, what[c.kind] ?? ''));
       }
     });
@@ -920,7 +991,15 @@ export class Game {
     const markDone = () => {
       if (ctx.poi !== 'wild' && !isQuest) (s.tiles[k] ||= {}).done = 1;
     };
-    choicesEl.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+    const setDisabled = (on: boolean) => choicesEl.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = on));
+    setDisabled(true);
+    // A price is paid up front, before any roll.
+    if (c.cost && !canPay(s, c.cost)) {
+      toast(cantPay(s, c.cost), 'bad');
+      sfx.deny();
+      setDisabled(false);
+      return;
+    }
 
     if (c.kind === 'leave') {
       markDone();
@@ -935,16 +1014,11 @@ export class Game {
       await this.shop(ctx.tier, k);
       return;
     }
+    const paid = pay(s, c.cost);
+    if (paid.length) this.renderHud();
     if (c.kind === 'rest') {
       markDone();
       const inn = ctx.poi === 'village';
-      const cost = inn ? 8 + ctx.tier * 2 : 0;
-      if (inn && p.gold < cost) {
-        toast(`A bed costs ${cost} gold. You have ${p.gold}.`, 'bad');
-        choicesEl.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = false));
-        return;
-      }
-      p.gold -= cost;
       const healed = heal(p, inn ? p.maxHp : Math.ceil(p.maxHp / 2));
       for (const n of party(s)) if (n.hero) heal(n.hero, inn ? n.hero.maxHp : Math.ceil(n.hero.maxHp / 2));
       const torches = inn ? Math.max(0, Math.min(3, s.maxStamina - s.stamina)) : 0;
@@ -952,7 +1026,7 @@ export class Game {
       sfx.heal();
       log(s, `rested at ${ev.title}`, 'event');
       this.outcomeBlock(card, choicesEl, inn ? `A hot meal, a soft bed. You wake refreshed.` : 'You rest in the stillness. Peace settles over you.',
-        [`+${healed} HP`, torches ? `+${torches} 🔥` : '', cost ? `-${cost} gold` : ''].filter(Boolean), true, sheet);
+        [`+${healed} HP`, torches ? `+${torches} 🔥` : '', ...paid].filter(Boolean), true, sheet);
       this.persist();
       return;
     }
@@ -981,8 +1055,24 @@ export class Game {
     let fx: Effects | null = null;
     let outcomeP: Promise<Outcome> | null = null;
     // Write both endings while the hero weighs the odds, so the story is ready when the die lands.
-    const ahead = aiEnabled() ? ([true, false] as const).map((ok) => this.outcomeAhead(ev, c, ctx, isQuest, ok)) : null;
-    const { roll } = await rollCheck({
+    const ahead = aiEnabled() ? (c.sure ? [true] : [true, false]).map((ok) => this.outcomeAhead(ev, c, ctx, isQuest, ok)) : null;
+    const onRoll = (r: D20Roll, usedInsp: boolean) => {
+      // The die is cast: closing the app now must not allow a re-roll.
+      s.pending = null;
+      queueMicrotask(() => save(s));
+      if (ctx.landmark === 'sword_stone' && stat === 'str' && r.success) track(s).sword = true;
+      if (usedInsp) p.inspiration = false;
+      fx = applyCheck(s, ev, c, r, ctx.tier, ctx.regionName, isQuest);
+      if (r.fumble && !isQuest) {
+        const slip = this.fumbleBlock(ctx, stat);
+        if (slip) fx.lines.push(slip);
+      }
+      fx.lines.push(...paid);
+      outcomeP = ahead ? ahead[r.success ? 0 : 1] : genOutcome(s, ev, c, { success: r.success, crit: r.crit, fumble: r.fumble, effects: fx.lines });
+    };
+    // A sure thing needs no roll: the price was the risk.
+    const sureRoll = (): D20Roll => ({ dice: [], kept: 0, adv: 0, bonus: 0, parts: [], total: 0, dc: 0, success: true, crit: false, fumble: false });
+    const { roll } = c.sure ? (() => { const r = sureRoll(); onRoll(r, false); return { roll: r }; })() : await rollCheck({
       title: `${STAT_NAMES[stat]} check`,
       subtitle: c.label,
       dc: c.dc ?? 12,
@@ -994,19 +1084,7 @@ export class Game {
       extra: (r) => r.crit
         ? h('button', { class: 'share-btn', onclick: () => shareCard(s, { kind: 'crit', title: `${STAT_NAMES[stat]} check`, subtitle: c.label, total: r.total, dc: r.dc }) }, '📤 Share this moment')
         : null,
-      onRoll: (r, usedInsp) => {
-        // The die is cast: closing the app now must not allow a re-roll.
-        s.pending = null;
-        queueMicrotask(() => save(s));
-        if (ctx.landmark === 'sword_stone' && stat === 'str' && r.success) track(s).sword = true;
-        if (usedInsp) p.inspiration = false;
-        fx = applyCheck(s, ev, c, r, ctx.tier, ctx.regionName, isQuest);
-        if (r.fumble && !isQuest) {
-          const slip = this.fumbleBlock(ctx, stat);
-          if (slip) fx.lines.push(slip);
-        }
-        outcomeP = ahead ? ahead[r.success ? 0 : 1] : genOutcome(s, ev, c, { success: r.success, crit: r.crit, fumble: r.fumble, effects: fx.lines });
-      },
+      onRoll,
     });
     const effects = fx as Effects | null;
     if (!effects || !outcomeP) return;
@@ -1028,7 +1106,7 @@ export class Game {
       if (closed.length) effects.lines.push(`${BLOCK_INFO[outcome.block.kind].icon} The way is blocked`);
     }
     this.persist();
-    const rollLine = `🎲 ${roll.kept}${fmtMod(roll.bonus)} = ${roll.total} vs DC ${roll.dc}`;
+    const rollLine = c.sure ? `✓ Sure thing (${costText(c.cost)})` : `🎲 ${roll.kept}${fmtMod(roll.bonus)} = ${roll.total} vs DC ${roll.dc}${c.bold ? ' · bold ×2' : ''}`;
     await this.outcomeBlock(card, choicesEl, outcome.text, effects.lines, roll.success, sheet, rollLine, roll.crit, roll.fumble, effects, turn);
     if (effects.levels) await this.levelUp(effects.levels);
     if (isQuest && roll.success) {
@@ -1275,6 +1353,7 @@ export class Game {
         const it = intentText(enemy);
         intentEl.className = `intent ${enemy.stun > 0 ? 'stunned' : enemy.intent}`;
         intentEl.textContent = `${it.icon} ${it.text}`;
+        if (enemy.intent === 'heavy' && enemy.stun <= 0 && !cs.end) hint('heavy', 'A crushing blow is coming! 🛡️ Defend to halve it, or stun the foe first.', 'top', true);
         inspBtn.style.display = p.inspiration ? '' : 'none';
         if (!p.inspiration) { inspire = false; inspBtn.classList.remove('on'); }
         this.renderHud();
@@ -1503,8 +1582,8 @@ export class Game {
 
   private async downed() {
     const s = this.s;
-    const lost = Math.floor(s.player.gold * 0.25);
-    s.player.gold -= lost;
+    // Defeat hurts: the day's takings are gone (at least a quarter of the purse), and something from the bag.
+    const { gold: lost, item } = defeatLoss(s);
     s.player.hp = Math.max(1, Math.ceil(s.player.maxHp / 2));
     for (const n of party(s)) if (n.hero) n.hero.hp = Math.max(n.hero.hp, Math.ceil(n.hero.maxHp / 2));
     s.stamina = 0;
@@ -1515,7 +1594,7 @@ export class Game {
       h('div', { class: 'eyebrow' }, 'Defeated'),
       h('h2', null, 'You wake by a dying fire'),
       h('p', null, comp ? `${comp.name} dragged you to safety and kept watch through the night.` : 'A passing stranger bandaged your wounds and vanished before dawn.'),
-      h('p', { class: 'muted' }, `Lost ${lost} gold. The day is over — but your tale is not.`),
+      h('p', { class: 'muted' }, `Lost ${lost} gold${item ? ` and your ${item.name}` : ''}. The day is over — but your tale is not.`),
     );
     await new Promise<void>((r) => m.card.append(h('button', { class: 'btn btn-primary', onclick: () => { m.close(); r(); } }, 'Make camp')));
     this.persist();
@@ -1778,7 +1857,6 @@ export class Game {
     s.stats.chapterStartGold = s.player.gold;
     s.stats.chapterKills = 0;
     s.stats.chapterExplored = 0;
-    this.calm = 1;
     this.campOpen = false;
     this.busy = false;
     this.persist();

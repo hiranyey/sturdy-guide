@@ -91,6 +91,10 @@ export const TIER_HP = 0.4;
 export const DMG_STEP = 2;
 /** from this tier, foes facing a party attack more than once */
 export const MULTI_TIER = 3;
+/** A heavy blow hits this much harder; bracing (Defend) halves it. Reading the foe's intent matters. */
+export const HEAVY_MULT = 3;
+/** how often a foe winds up a heavy blow (weight against 6 for a normal attack) */
+export const HEAVY_ODDS = 3;
 /** Level a hero is expected to be when first reaching a tier. */
 export const tierLevel = (tier: number) => 1 + (tier - 1) * 3;
 
@@ -125,7 +129,7 @@ export function startCombat(enemy: Enemy): CombatState {
 export function intentText(e: Enemy): { icon: string; text: string } {
   if (e.stun > 0) return { icon: '💫', text: `${e.name} is stunned and will lose its turn` };
   const dis = e.dis > 0 ? ' (at disadvantage)' : '';
-  if (e.intent === 'heavy') return { icon: '⚠️', text: `${e.name} winds up a crushing blow!${e.attacks > 1 ? ` (+${e.attacks - 1} more)` : ''}${dis}` };
+  if (e.intent === 'heavy') return { icon: '⚠️', text: `${e.name} winds up a crushing blow (×${HEAVY_MULT} damage)!${e.attacks > 1 ? ` (+${e.attacks - 1} more)` : ''}${dis} Defend to halve it.` };
   if (e.intent === 'guard') return { icon: '🛡️', text: `${e.name} raises its guard (+3 AC)` };
   const multi = e.attacks > 1 ? (e.attacks === 2 ? ' — two attacks' : ` — ${e.attacks} attacks`) : '';
   return { icon: '⚔️', text: `${e.name} ${pick(ENEMY_TAUNTS)} and readies ${multi ? 'its assault' : 'an attack'}${multi}${dis}` };
@@ -473,7 +477,7 @@ export function playRound(s: GameState, cs: CombatState, action: Action, useInsp
     c.beats.push({ actor: actor(u), who: u.id, text: `${subj(u)} ${u.isPlayer ? 'refuse' : 'refuses'} to break (+${got} HP).`, tone: 'neutral', floatOn: 'unit', target: u.id, floatText: `+${got}` });
   }
   cs.round++;
-  e.intent = weighted<Intent>([['attack', 6], ['heavy', e.boss ? 4 : 2.5], ['guard', e.hp < e.maxHp / 2 ? 2 : 1]]);
+  e.intent = weighted<Intent>([['attack', 6], ['heavy', HEAVY_ODDS + (e.boss ? 1.5 : 0)], ['guard', e.hp < e.maxHp / 2 ? 2 : 1]]);
   return c.beats;
 }
 
@@ -586,7 +590,7 @@ function strike(c: Ctx, followUp: boolean) {
     return;
   }
   const dr = dmg(e.dmgN, e.dmgD, e.dmgB + (heavy ? 2 : 0), r.crit);
-  let total = heavy ? Math.round(dr.total * 1.5) : dr.total;
+  let total = heavy ? Math.round(dr.total * HEAVY_MULT) : dr.total;
   const braced = heavy && (tst.defending || t.mods.heavyHalf);
   if (braced) total = Math.ceil(total / 2);
   let warded = 0;

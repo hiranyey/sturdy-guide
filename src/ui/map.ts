@@ -4,6 +4,7 @@ import { mulberry32, hash2 } from '../core/rng';
 import { CLASSES } from '../core/rules';
 import { party } from '../core/state';
 import { blockAt, canEnter, BLOCK_INFO } from '../core/blocks';
+import { signAt, SIGNS } from '../core/encounters';
 import type { Biome, GameState, PoiKind } from '../core/types';
 import { styleAt, riverMask, riverAt, landmarkAt } from '../core/terrain';
 import { reducedMotion } from './prefs';
@@ -12,6 +13,29 @@ import { hexPath, palette, decorate, drawRiver, riverSegments, drawLandmark, wat
 
 // ---------- POI icons ----------
 /** A closed hex: darkened, hatched, a pulsing red rim and what's in the way. */
+/** A sign token: what waits on a nearby tile (foe, scene, quick choice, cache, herbs). */
+function drawSign(ctx: Ctx, icon: string, ring: string, x: number, y: number, s: number, t: number, still: boolean) {
+  const bob = still ? 0 : Math.sin(t / 520 + x * 0.01) * s * 0.035;
+  const cy = y - s * 0.08 + bob, r = s * 0.3;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(16,14,28,0.78)';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 5;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = Math.max(1.5, s * 0.06);
+  ctx.strokeStyle = ring;
+  ctx.stroke();
+  ctx.font = `${Math.round(s * 0.36)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff4dc';
+  ctx.fillText(icon, x, cy + s * 0.02);
+  ctx.restore();
+}
+
 function drawBlock(ctx: Ctx, icon: string, x: number, y: number, s: number, t: number) {
   ctx.save();
   hexPath(ctx, x, y, s - 2);
@@ -661,6 +685,9 @@ export class MapView {
 
     const pois: { kind: PoiKind | 'quest'; x: number; y: number; done: boolean }[] = [];
     const blocked: { icon: string; x: number; y: number }[] = [];
+    const signs: { icon: string; ring: string; x: number; y: number }[] = [];
+    // what waits nearby is visible a little beyond your feet (less in thick woods)
+    const scout = Math.max(2, vision);
     for (let r = rMin; r <= rMax; r++) {
       const qMin = Math.floor((this.cam.x - this.w / 2) / sw - r / 2) - 2;
       const qMax = Math.ceil((this.cam.x + this.w / 2) / sw - r / 2) + 2;
@@ -698,6 +725,10 @@ export class MapView {
         }
         const bl = this.demo ? null : blockAt(s, hx);
         if (bl) blocked.push({ icon: BLOCK_INFO[bl.kind].icon, x, y });
+        if (!this.demo && !bl && distance(hx, s.pos) <= scout && (hx.q !== s.pos.q || hx.r !== s.pos.r)) {
+          const sg = signAt(s, hx);
+          if (sg) signs.push({ icon: sg.kind === 'foe' && sg.enemy?.emoji ? sg.enemy.emoji : SIGNS[sg.kind].icon, ring: SIGNS[sg.kind].ring, x, y });
+        }
         const poi = poiAt(hx, s.seed);
         const isQuest = s.quest && s.quest.target.q === q && s.quest.target.r === r;
         if (isQuest) pois.push({ kind: 'quest', x, y, done: false });
@@ -728,6 +759,7 @@ export class MapView {
     }
 
     for (const b of blocked) drawBlock(ctx, b.icon, b.x, b.y, size, t);
+    for (const g of signs) drawSign(ctx, g.icon, g.ring, g.x, g.y, size, t, reducedMotion());
 
     // tap flash
     if (this.flash) {

@@ -22,7 +22,8 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
   const fx: Effects = { lines: [], levels: 0, recruit: null, npc: null, item: null, questComplete: false };
   const npc = ev.npc ? addNpc(s, ev.npc, where) : null;
   fx.npc = npc;
-  const mult = roll.crit ? 2 : 1;
+  // a crit doubles the reward, and so does a bold move (they stack)
+  const mult = (roll.crit ? 2 : 1) * (choice.bold ? 2 : 1);
 
   if (roll.crit) {
     s.stats.crits++;
@@ -43,14 +44,14 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
         break;
       }
       case 'item': {
-        const it = randomItem(p, tier + (roll.crit ? 1 : 0));
+        const it = randomItem(p, tier + (mult > 1 ? 1 : 0));
         fx.item = it;
         fx.lines.push(`${it.name} (${itemDesc(it)})${lootNote(stowLoot(s, it))}`);
         break;
       }
       case 'ally': {
         if (npc) {
-          const gain = roll.crit ? 45 : 30;
+          const gain = mult > 1 ? 45 : 30;
           npc.affinity = Math.min(100, npc.affinity + gain);
           fx.lines.push(`${npc.name} ♥ +${gain}`);
           if (npc.affinity >= 30 && !npc.inParty && party(s).length < 2) fx.recruit = npc;
@@ -58,7 +59,7 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
         break;
       }
       case 'heal': {
-        const amount = roll.crit ? p.maxHp : rollDice(2, 6).reduce((a, b) => a + b, 0) + tier * 2;
+        const amount = mult > 1 ? p.maxHp : rollDice(2, 6).reduce((a, b) => a + b, 0) + tier * 2;
         const h = heal(p, amount);
         fx.lines.push(`+${h} HP`);
         // The whole party shares the rest.
@@ -80,8 +81,10 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
       }
       case 'xp':
       default:
-        xp += 20 * tier;
+        xp += 20 * tier * (choice.bold ? 2 : 1);
     }
+    // a sure thing you paid for teaches less than a risk you took
+    if (choice.sure) xp = Math.ceil(xp / 2);
     if (isQuest) {
       fx.questComplete = true;
     }
@@ -102,6 +105,7 @@ export function applyCheck(s: GameState, ev: GameEvent, choice: Choice, roll: D2
       const dc = choice.dc ?? 12;
       let dmg = dc < 12 ? d(4) + tier - 1 : dc < 16 ? d(6) + tier : d(6) + d(6) + tier;
       if (roll.fumble) dmg *= 2;
+      if (choice.bold) dmg = Math.round(dmg * 1.5); // a bold move that fails hurts more
       dmg = Math.min(dmg, p.hp - 1); // events wound, but never kill
       if (dmg > 0) {
         p.hp -= dmg;
@@ -136,4 +140,18 @@ export function questRewards(s: GameState, tier: number): Effects {
     lines: [`+${xp} XP`, `+${g} gold`, `${it.name} (${itemDesc(it)})${lootNote(who)}`, '+1 potion', '✨ Inspiration'],
     levels, recruit: null, npc: null, item: it, questComplete: true,
   };
+}
+
+/**
+ * What a defeat costs: everything earned today (at least a quarter of the
+ * purse) and one item from the bag (never what the party wears).
+ */
+export function defeatLoss(s: GameState, r: () => number = Math.random): { gold: number; item: Item | null } {
+  const p = s.player;
+  const today = Math.max(0, p.gold - (s.stats.chapterStartGold ?? p.gold));
+  const gold = Math.min(p.gold, Math.max(today, Math.floor(p.gold * 0.25)));
+  p.gold -= gold;
+  let item: Item | null = null;
+  if (p.bag.length) item = p.bag.splice(Math.floor(r() * p.bag.length), 1)[0];
+  return { gold, item };
 }

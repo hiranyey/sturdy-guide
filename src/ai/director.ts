@@ -9,6 +9,7 @@ import {
   fallbackEvent, fallbackOutcome, fallbackQuest, regionName, regionBlurb, PREMISES, HOOKS, CAMP_BANTER, KIND_EMOJI,
 } from '../core/content';
 import { pick } from '../core/rng';
+import { clampCost } from '../core/choices';
 import { STATS } from '../core/types';
 import { LANDMARKS, type LandmarkKind } from '../core/terrain';
 import { talent } from '../core/talents';
@@ -205,7 +206,12 @@ export function sanitizeEvent(raw: any, ctx: EventContext): GameEvent {
       choice.dc = Math.max(8, Math.min(maxDc, Number.isFinite(dc) ? Math.round(dc) : 10 + ctx.tier));
       choice.reward = VALID_REWARDS.includes(c.reward) ? c.reward : 'xp';
       if (choice.reward === 'ally' && !ev.npc) choice.reward = 'xp';
+      if (c.bold === true) choice.bold = 1;
     }
+    // a price paid up front; a "sure" option must have one (it skips the roll)
+    const cost = c.kind === 'check' || c.kind === 'fight' ? clampCost(c.cost, ctx.tier) : undefined;
+    if (cost) choice.cost = cost;
+    if (c.kind === 'check' && c.sure === true && cost && ctx.poi !== 'quest') { choice.sure = 1; delete choice.bold; }
     if (c.kind === 'fight') {
       const kind = VALID_ENEMY.includes(c.enemy?.kind) ? c.enemy.kind : 'monster';
       const emoji = typeof c.enemy?.emoji === 'string' && [...c.enemy.emoji].length <= 3 && c.enemy.emoji.trim() ? c.enemy.emoji.trim() : KIND_EMOJI[kind];
@@ -259,8 +265,12 @@ Return JSON:
    {"label": "imperative, max 6 simple words, so the player knows exactly what it does", "kind": "check" | "fight" | "trade" | "rest" | "leave",
     "stat": "str|dex|con|int|wis|cha" (check only), "dc": 8-${Math.min(20, 12 + ctx.tier * 2)} (check only; 10 easy, 13 fair, 16 hard),
     "reward": "gold|item|ally|heal|lore|xp" (check only; "ally" only if there is an npc to befriend),
+    "bold": true (optional, at most one check: the daring option; it is harder, pays double and hurts more if it fails),
+    "cost": {"gold": n} or {"torch": 1} or {"hp": n} (optional: a price paid up front, e.g. a bribe, a gift, extra time, a risky shortcut),
+    "sure": true (optional, only with "cost": pay the price and it simply works, no roll; e.g. "Bribe the guard" with {"gold": 12}),
     "enemy": {"name": "...", "kind": "beast|humanoid|undead|monster|spirit", "emoji": "one emoji"} (fight only)} ]}
-Rules: offer genuinely different approaches using DIFFERENT stats; make choices specific to the scene and easy to tell apart; include "leave" unless this is the quest climax.`, 650);
+Rules: offer genuinely different approaches using DIFFERENT stats; make choices specific to the scene and easy to tell apart; make them real trade-offs (a safe option, a bold one, and where it fits one that costs gold, a torch or HP up front); include "leave" unless this is the quest climax.
+The hero has ${s.player.hp}/${s.player.maxHp} HP, ${s.player.gold} gold and ${s.stamina} torches left.${s.player.hp < s.player.maxHp * 0.5 ? ' They are badly hurt: offer a way to heal (reward "heal").' : ''}`, 650);
     return sanitizeEvent(raw, ctx);
   }
 }

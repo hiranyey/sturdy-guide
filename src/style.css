@@ -192,6 +192,19 @@ body.at-title #hud, body.at-title #dock, body.at-title #map-ui { visibility: hid
 .cbadge.rest { background: #2f6b8a; color: #e0f4ff; }
 .cbadge.leave { background: transparent; border: 1px solid #b8975a; color: var(--ink-soft); }
 .choice-leave { background: transparent; box-shadow: none; }
+.cmeta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; font-weight: 500; }
+.cchip { font-size: 0.72rem; line-height: 1.2; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.cchip.bold { background: #6a1d1d; color: #ffd9a8; letter-spacing: 0.03em; }
+.cchip.cost { background: #efe0bc; color: #6b4a14; border: 1px solid #c9a768; }
+.cchip.gain { background: #dff1e3; color: #1f5f36; border: 1px solid #9cc9a8; }
+.cchip.cost.short { background: #f6d6d0; color: #8a2a1f; border-color: #c97a6a; }
+.choice.bold { border-color: #a8452e; box-shadow: 0 3px 0 #a8452e; }
+.choice.cant { opacity: 0.6; }
+.rhint.need { opacity: 1; color: #2e8b57; font-weight: 700; animation: need-pulse 1.4s ease-in-out infinite; }
+@keyframes need-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .rhint.need { animation: none; } }
+.choice .clabel { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 2px; }
+.choice .clabel .cmeta { flex-basis: 100%; }
 .outcome-block { border-top: 1px dashed rgba(140,100,40,0.5); padding-top: 10px; animation: rise 0.35s ease; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 .roll-line { font-family: var(--head); font-size: 0.85rem; color: var(--ink-soft); }

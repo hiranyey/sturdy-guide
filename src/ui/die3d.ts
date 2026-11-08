@@ -206,7 +206,8 @@ export class Die3D {
     const t0 = performance.now();
     return new Promise((resolve) => {
       const tick = (now: number) => {
-        const t = Math.min(1, (now - t0) / ms);
+        // the first frame can be stamped a hair before t0: never let time run backwards
+        const t = Math.min(1, Math.max(0, (now - t0) / ms));
         const ease = 1 - (1 - t) ** 3;
         const m = mmul(rot(a1, turns1 * (1 - ease)), mmul(rot(a2, turns2 * (1 - ease)), end));
         // Bounces that get lower and quicker; the die slides to the middle.

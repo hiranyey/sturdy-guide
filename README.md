@@ -8,8 +8,9 @@ An **AI Dungeon Master** (any model on [OpenRouter](https://openrouter.ai)) writ
 
 1. **Open the app.** You get a *"Previously in…"* recap, the cliffhanger from last time, and maybe a small gift if you've been away.
 2. **Spend 12 torches.** Each step burns one; marsh, peaks and snow cost two. Tap a glowing hex to move, or tap any revealed hex to walk there.
-3. **Things happen.** Villages, ruins, caves, shrines, towers, groves, strangers, random ambushes and odd wilderness moments.
-4. **Make camp.** This ends the day. The AI writes the chapter recap, your companion says something by the fire, and you get a hook for tomorrow. Everything is saved, so it's a natural place to stop.
+3. **Pick your path.** Icons on the tiles around you show what waits there today: ⚔️ a foe (shown as the creature), ❔ a scene, 👣 a quick choice on the road, 💰 a cache, 🌿 healing herbs. About every second step does something, and long walks route around foes you didn't aim for.
+4. **Things happen.** Villages, ruins, caves, shrines, towers, groves, strangers, fights and odd wilderness moments. Choices are trade-offs: a safe option, a **bold** one (harder, double reward, hurts more if it fails) and often a **sure** thing you pay for up front (gold, a torch or HP). Quick choices on the road take one tap and show exactly what they cost and give.
+5. **Make camp.** This ends the day. The AI writes the chapter recap, your companion says something by the fire, and you get a hook for tomorrow. Everything is saved, so it's a natural place to stop.
 
 ## D&D-style mechanics
 
@@ -17,7 +18,8 @@ An **AI Dungeon Master** (any model on [OpenRouter](https://openrouter.ai)) writ
 - **Ability checks:** you tap a d20, it tumbles and lands, and your total is compared against the DC. Each choice shows its DC and your odds before you commit.
 - **Nat 20** is a critical (double rewards and **Inspiration**). **Nat 1** is a fumble.
 - **Inspiration:** spend it on any roll to get **advantage** (roll two d20s and keep the higher).
-- **Combat:** attack rolls against AC, damage dice, and class abilities with a few uses per fight. Some abilities are **bonus actions** (⚡): they resolve at once and you still take your turn. The enemy shows its next move in advance (a heavy blow, raising its guard, or several attacks against a party), so you can respond with Defend, Talk (persuade a foe and they may become a friend), Flee, a Potion or First Aid. If you drop to 0 HP you get one **death save** per fight.
+- **HP is a resource for the whole day.** Camping heals fully; otherwise healing is scarce (herbs, potions, paid rests, a sure "tend your wounds" option when you're badly hurt). Losing a fight ends the day and costs everything you earned that day (at least a quarter of your purse) and an item from your bag.
+- **Combat:** attack rolls against AC, damage dice, and class abilities with a few uses per fight. Some abilities are **bonus actions** (⚡): they resolve at once and you still take your turn. The enemy shows its next move in advance (a heavy blow, raising its guard, or several attacks against a party), so you can respond with Defend (a crushing blow does ×3 damage; Defend halves it), Talk (persuade a foe and they may become a friend), Flee, a Potion or First Aid. If you drop to 0 HP you get one **death save** per fight.
 - **Classes:** each has a signature ability and a **talent tree** of three paths:
 
   | Class | Signature | Talent paths |

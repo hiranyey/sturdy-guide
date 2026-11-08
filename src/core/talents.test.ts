@@ -3,7 +3,7 @@ import { createGame, addNpc } from './state';
 import { newHero, newPlayer, gainXp, checkBonus, rollD20, xpForNext, xpStep, XP_LEVELS, mod } from './rules';
 import { TREES, ABILITIES, ROW_LEVEL, learn, learnState, abilitiesOf, modsOf, autoPick, treeSize, type AbilityId } from './talents';
 import { ensureHero, syncParty, autoLearn, classForRole, migrateSave, heroCheck, partyMods } from './companions';
-import { makeEnemy, startCombat, playRound, useBonus, canUse, partyUnits, afterFight } from './combat';
+import { makeEnemy, startCombat, playRound, useBonus, canUse, partyUnits, afterFight, type CombatState } from './combat';
 import { startDay } from './state';
 import type { ClassId, EnemyKind, GameState } from './types';
 
@@ -207,7 +207,14 @@ function party(cls: ClassId, level: number, allies: number) {
   return s;
 }
 
-function fight(s: GameState, tier: number, boss: boolean, level: number) {
+const STUNS: AbilityId[] = ['titan_strike', 'hold_monster', 'laughter', 'dirty_trick'];
+/** How a player who reads the foe plays: stun or brace against a heavy blow. */
+function smartMove(cs: CombatState, main: AbilityId[]): AbilityId | 'attack' | 'defend' {
+  if (cs.enemy.intent === 'heavy' && cs.enemy.stun <= 0) return main.find((id) => STUNS.includes(id)) ?? 'defend';
+  return main[0] ?? 'attack';
+}
+
+function fight(s: GameState, tier: number, boss: boolean, level: number, smart = true) {
   const kinds: EnemyKind[] = ['beast', 'humanoid', 'undead', 'monster', 'spirit'];
   const allies = partyUnits(s).length - 1;
   const cs = startCombat(makeEnemy({ name: 'F', kind: kinds[Math.floor(Math.random() * 5)] }, tier, boss, allies, level));
@@ -216,7 +223,7 @@ function fight(s: GameState, tier: number, boss: boolean, level: number) {
   while (!cs.end && r++ < 80) {
     for (const id of abilitiesOf(p)) if (ABILITIES[id].bonus && canUse(s, cs, id)) useBonus(s, cs, id);
     const main = abilitiesOf(p).filter((id) => !ABILITIES[id].bonus && id !== 'first_aid' && canUse(s, cs, id));
-    playRound(s, cs, p.hp < p.maxHp * 0.35 && p.potions ? 'potion' : main[0] ?? 'attack');
+    playRound(s, cs, p.hp < p.maxHp * 0.35 && p.potions ? 'potion' : smart ? smartMove(cs, main) : main[0] ?? 'attack');
     for (const u of partyUnits(s)) {
       expect(u.hero.hp).toBeGreaterThanOrEqual(0);
       expect(u.hero.hp).toBeLessThanOrEqual(u.hero.maxHp);
@@ -258,6 +265,19 @@ describe('party combat', () => {
         expect(wins / 80, `${cls} T${tier} L${level} +${allies}`).toBeGreaterThan(0.85);
       }
     }
+  });
+  it('reading the foe matters: bracing for heavy blows saves HP', () => {
+    let naive = 0, smart = 0;
+    for (let i = 0; i < 400; i++) {
+      const cls = CLS[i % 4];
+      for (const sm of [false, true]) {
+        const s = party(cls, 1, 0);
+        const end = fight(s, 1, false, 1, sm);
+        const lost = end === 'win' ? 1 - s.player.hp / s.player.maxHp : 1;
+        if (sm) smart += lost; else naive += lost;
+      }
+    }
+    expect(smart).toBeLessThan(naive * 0.8);
   });
 });
 void mod; void newPlayer;

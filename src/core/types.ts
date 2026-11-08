@@ -103,6 +103,8 @@ export interface TileMem {
   note?: string;
   /** landmark already discovered */
   lm?: 1;
+  /** day its map sign (foe, scene, find…) was used up (src/core/encounters.ts) */
+  e?: number;
 }
 
 export interface LogEntry { day: number; text: string; kind: 'event' | 'fight' | 'friend' | 'quest' | 'loot' | 'info' }
@@ -168,7 +170,16 @@ export interface Choice {
   custom?: string;
   /** rolled with advantage (a clever idea) */
   adv?: 1;
+  /** paid up front when chosen (gold, torches or HP) */
+  cost?: Cost;
+  /** a bold move: harder, but the reward is doubled */
+  bold?: 1;
+  /** no roll: pay the cost and it simply works */
+  sure?: 1;
 }
+
+/** An up-front price for a choice. */
+export interface Cost { gold?: number; torch?: number; hp?: number }
 
 /** How a character sounds, for voiced story moments (src/ui/voice.ts). */
 export interface VoiceHint { gender?: 'masculine' | 'feminine'; age?: 'young' | 'adult' | 'mature'; deep?: boolean }
@@ -182,6 +193,8 @@ export interface GameEvent {
   choices: Choice[];
   /** a turning point: the hero may write their own action (src/ai/freeform.ts) */
   open?: boolean;
+  /** prices and bold/sure options already added (src/core/choices.ts) */
+  shaped?: 1;
 }
 
 /** A turning point: something the hero chose to do that changes the story from then on. */
