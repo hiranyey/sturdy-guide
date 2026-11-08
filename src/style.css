@@ -904,3 +904,16 @@ body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-
 .block-card .choices { text-align: left; }
 .block-icon { font-size: 3rem; line-height: 1; margin: 6px auto 2px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.35)); animation: pop 0.45s cubic-bezier(.2,1.5,.4,1); }
 .block-why { color: #6b47b8; font-size: 0.9rem; margin: 0 0 6px; }
+
+/* ---------- 3D d20 (die3d.ts) ---------- */
+.die-host.d3.big, .die-host.d3.rolling { animation: none; }
+.die-host.d3.landed { animation: land3d 0.35s cubic-bezier(.2,1.6,.4,1); }
+@keyframes land3d { 0% { transform: scale(1.08, 0.94); } 100% { transform: scale(1); } }
+.dice-row.thrown .die-host.d3 { animation: throwUp3d 0.45s cubic-bezier(.2,.8,.3,1); }
+@keyframes throwUp3d { 50% { transform: translateY(calc(var(--throw, 120px) * -1)) scale(0.9); } }
+.die-host.d3:not(.crit):not(.fumble) svg { filter: drop-shadow(0 0 20px rgba(130,100,255,0.4)); }
+.d3-face { fill: var(--die-mid); stroke: var(--die-edge); stroke-width: 1.1; stroke-linejoin: round; stroke-opacity: 0.85; }
+.d3-shade { pointer-events: none; }
+.d3-num { fill: #fff; font-family: var(--head); font-weight: 800; paint-order: stroke; stroke: rgba(20,8,60,0.7); stroke-width: 2.2px; pointer-events: none; }
+.die-host.crit .d3-num { stroke: rgba(90,50,0,0.8); }
+.d3-shadow { fill: #000; }

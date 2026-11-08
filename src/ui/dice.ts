@@ -1,5 +1,6 @@
 import { h, wait, vibrate } from './dom';
 import { sfx } from './audio';
+import { mountD20, die3dOf } from './die3d';
 import { fmtMod, rollD20, successChance, type D20Roll } from '../core/rules';
 import { settings } from '../ai/settings';
 import { announce, reducedMotion } from './prefs';
@@ -56,6 +57,17 @@ async function tumble(dieHost: HTMLElement, final: number, ms: number, sides = 2
   if (reducedMotion()) ms = Math.min(ms, 250);
   dieHost.classList.remove('landed', 'crit', 'fumble');
   dieHost.classList.add('rolling');
+  const d3 = sides === 20 ? die3dOf(dieHost) : undefined;
+  if (d3) {
+    // The 3D die: a short rattle as it leaves the hand, then a knock on every bounce.
+    sfx.roll(Math.min(0.35, ms / 3000));
+    vibrate(10);
+    let hit = 1;
+    await d3.roll(final, ms * 1.15, () => { sfx.clack(hit); vibrate(Math.round(14 * hit)); hit *= 0.6; });
+    dieHost.classList.remove('rolling');
+    dieHost.classList.add('landed');
+    return;
+  }
   sfx.roll(ms / 1000);
   vibrate([10, 30, 10, 30, 10]);
   const num = () => dieHost.querySelector('.d20-num, .sdie-num') as SVGTextElement | null;
@@ -113,8 +125,10 @@ export function rollCheck(opts: CheckOptions): Promise<{ roll: D20Roll; usedInsp
     };
     updateOdds();
 
-    const dieA = h('div', { class: 'die-host big', html: d20Svg(20), role: 'button', tabindex: '0', 'aria-label': `Roll d20 for ${opts.title}, DC ${opts.dc}` });
-    const dieB = h('div', { class: 'die-host big ghost', html: d20Svg(20), 'aria-hidden': 'true' });
+    const dieA = h('div', { class: 'die-host big', role: 'button', tabindex: '0', 'aria-label': `Roll d20 for ${opts.title}, DC ${opts.dc}` });
+    const dieB = h('div', { class: 'die-host big ghost', 'aria-hidden': 'true' });
+    mountD20(dieA, 20);
+    mountD20(dieB, 20);
     const diceRow = h('div', { class: 'dice-row' }, dieA);
     const result = h('div', { class: 'roll-result' });
     const hint = h('div', { class: 'tap-hint' }, 'Tap — or flick the die upward — to roll');
@@ -236,7 +250,7 @@ export class DiceTray {
 
   async showD20(roll: D20Roll, label: string, fast = false) {
     this.el.innerHTML = '';
-    const hosts = roll.dice.map(() => h('div', { class: 'die-host tray', html: d20Svg(20) }));
+    const hosts = roll.dice.map(() => { const el = h('div', { class: 'die-host tray' }); mountD20(el, 20, { idle: false }); return el; });
     const info = h('div', { class: 'tray-info' }, h('div', { class: 'tray-label' }, label), h('div', { class: 'tray-math' }));
     this.el.append(...hosts, info);
     const ms = fast ? 450 : 650;

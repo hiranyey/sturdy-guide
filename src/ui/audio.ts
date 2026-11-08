@@ -251,6 +251,8 @@ export const sfx = {
   sell() { for (let i = 0; i < 6; i++) tone(rnd(1300, 2100), 0.07, 'square', 0.03, i * rnd(0.04, 0.07)); },
   level() { [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, 0.5, 'triangle', 0.12, i * 0.1)); },
   tap() { click(0, 0.08, 3000); },
+  /** A die striking the table: a knock and a click, softer with each bounce. */
+  clack(power = 1) { click(0, 0.22 * power, 1300 + Math.random() * 500); tone(170 + Math.random() * 40, 0.05, 'sine', 0.07 * power); click(0.03, 0.1 * power, 3200); },
   /** A switch flipped. */
   toggle(on = true) { click(0, 0.12, on ? 3600 : 2200); tone(on ? 880 : 660, 0.05, 'sine', 0.03, 0.01); },
   /** Not allowed: two low blips. */
