@@ -117,7 +117,7 @@ Reply with ONLY a JSON object.` },
 Hero: ${JSON.stringify(hero)}
 Player's action: ${JSON.stringify(text)}
 Return JSON:
-{"refuse": null, or one short in-world sentence if it can't be attempted (needs something the hero doesn't have, or has nothing to do with this scene),
+{"refuse": null, or one short in-world sentence in plain words if it can't be attempted (needs something the hero doesn't have, or has nothing to do with this scene),
  "kind": "check" | "fight" (it starts a battle) | "leave" (walks away),
  "label": "the action as a short imperative, max 6 words",
  "stat": "str|dex|con|int|wis|cha" (check only; the ability it really tests),

@@ -26,7 +26,7 @@ export function randomNpc(r: Rand = rand, role?: string): NpcSpec {
 
 const REGION_ADJ: Record<Biome, string[]> = {
   grass: ['Golden', 'Whispering', 'Windward', 'Bramble', 'Sunlit', 'Hollow'],
-  forest: ['Thornwood', 'Elder', 'Mossy', 'Gloaming', 'Owlsong', 'Tangle'],
+  forest: ['Thornwood', 'Elder', 'Mossy', 'Twilight', 'Owlsong', 'Tangle'],
   swamp: ['Weeping', 'Drowned', 'Mire', 'Lantern', 'Rotting', 'Croaking'],
   hills: ['Barrow', 'Rolling', 'Shepherd\'s', 'Cairn', 'Windswept'],
   mountain: ['Thunder', 'Iron', 'Skyfang', 'Broken', 'Giant\'s'],
@@ -36,14 +36,14 @@ const REGION_ADJ: Record<Biome, string[]> = {
   water: ['Glass'], deep: ['Abyssal'],
 };
 const REGION_NOUN: Record<Biome, string[]> = {
-  grass: ['Meadows', 'Downs', 'Fields', 'Vale', 'Leas'],
-  forest: ['Wood', 'Weald', 'Thicket', 'Glades', 'Grove'],
-  swamp: ['Fens', 'Bog', 'Marshes', 'Mire', 'Sloughs'],
-  hills: ['Hills', 'Tors', 'Knolls', 'Barrows', 'Heights'],
+  grass: ['Meadows', 'Downs', 'Fields', 'Vale', 'Pastures'],
+  forest: ['Wood', 'Woods', 'Thicket', 'Glades', 'Grove'],
+  swamp: ['Fens', 'Bog', 'Marshes', 'Mire', 'Wetlands'],
+  hills: ['Hills', 'Slopes', 'Knolls', 'Barrows', 'Heights'],
   mountain: ['Peaks', 'Spires', 'Crags', 'Teeth', 'Range'],
   snow: ['Wastes', 'Reach', 'Expanse', 'Tundra', 'Drifts'],
   desert: ['Dunes', 'Sands', 'Flats', 'Expanse', 'Barrens'],
-  sand: ['Shore', 'Strand', 'Coast', 'Banks', 'Sands'],
+  sand: ['Shore', 'Beach', 'Coast', 'Banks', 'Sands'],
   water: ['Waters'], deep: ['Deep'],
 };
 

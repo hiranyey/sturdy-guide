@@ -52,6 +52,7 @@ export function openSettings(opts: { inGame: boolean; onQuit?: () => void; onCha
         aiEnabled() ? h('button', { class: 'btn', onclick: () => { settings.apiKey = ''; saveSettings(); opts.onChange?.(); render(); } }, 'Disconnect') : null,
       ),
       testOut,
+      aiEnabled() ? toggle('Simple story text (short sentences, everyday words)', settings.plainStory, (v) => (settings.plainStory = v)) : null,
       aiEnabled() ? toggle('Prepare nearby encounters ahead (fewer waits, a few extra AI calls)', settings.foresight, (v) => (settings.foresight = v)) : null,
       h('h3', null, 'Play'),
       toggle('Tap the die to roll (off = auto-roll)', settings.tapToRoll, (v) => (settings.tapToRoll = v)),
