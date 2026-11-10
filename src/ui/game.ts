@@ -19,7 +19,7 @@ import { portraitEl } from './portrait';
 import { heroPortraitEl } from './art/heroes';
 import { foeArt } from './art/foes';
 import { LiveBar, floatText, floatKind, pulse, sparks, strike, flash, hitStop, slay, calm, STRIKE_FOR } from './combat-fx';
-import { sceneArt, combatBackdrop, type SceneTime } from './art/scenes';
+import { sceneArt, type SceneTime } from './art/scenes';
 import { itemArt, potionArt, goldArt } from './art/items';
 import { iconEl } from './art/icons';
 import { openSettings } from './settings-sheet';
@@ -1307,11 +1307,12 @@ export class Game {
       const foeHp = h('div', null, foeBar.el);
       const intentEl = h('div', { class: 'intent' });
       const sprite = h('div', { class: `foe-sprite ${boss ? 'boss' : ''}`, html: foeArt(spec, { tier, boss }) });
-      const foeCard = h('div', { class: 'foe-card' }, sprite,
-        h('div', { class: 'foe-info' },
-          h('div', { class: 'foe-name' }, enemy.name, boss ? h('span', { class: 'boss-tag' }, 'BOSS') : null),
-          h('div', { class: 'foe-meta' }, `${enemy.kind} · `, h('span', { class: 'ac' }, `🛡 AC ${enemy.ac}`), ` · ${'☠'.repeat(tier)}`),
-          foeHp));
+      // The foe stands on the right of the arena; its name, HP and next move sit on a plate to the left.
+      const foeCard = h('div', { class: 'foe-card' }, h('i', { class: 'foe-shadow', 'aria-hidden': 'true' }), sprite);
+      const foePlate = h('div', { class: 'foe-plate' },
+        h('div', { class: 'foe-name' }, h('span', null, enemy.name), boss ? h('span', { class: 'boss-tag' }, 'BOSS') : null),
+        h('div', { class: 'foe-meta' }, `${enemy.kind} · `, h('span', { class: 'ac' }, `🛡 AC ${enemy.ac}`), ` · ${'☠'.repeat(tier)}`),
+        foeHp, intentEl);
       const actionsEl = h('div', { class: 'actions' });
       const abilRow = h('div', { class: 'abil-row', role: 'group', 'aria-label': 'Abilities' });
       let inspire = false;
@@ -1327,16 +1328,19 @@ export class Game {
       const chips = new Map<string, { el: HTMLElement; hp: LiveBar }>();
       const partyRow = h('div', { class: `party-row n${ms.length}` }, ...ms.map((m) => {
         const hp = new LiveBar('hp');
-        const el = h('div', { class: `pchip ${m.id === 'you' ? 'me' : ''}` }, avatar(m, m.id === 'you' ? 34 : 28),
-          h('div', { class: 'pc-body' }, h('small', { class: 'pc-name' }, m.id === 'you' ? CLASSES[p.cls].name : `${m.name.split(' ')[0]} · ${CLASSES[m.hero.cls].glyph}`), h('div', { class: 'pc-hp' }, hp.el)));
+        const el = h('div', { class: `pchip ${m.id === 'you' ? 'me' : ''}`, style: `--cls:${CLASSES[m.hero.cls].color}` }, avatar(m, m.id === 'you' ? 46 : 34),
+          h('div', { class: 'pc-body' }, h('small', { class: 'pc-name' }, m.id === 'you' && ms.length === 1 ? `${m.name.split(' ')[0]} · ${CLASSES[p.cls].name}` : m.name.split(' ')[0]), h('div', { class: 'pc-hp' }, hp.el)));
         chips.set(m.id, { el, hp });
         return el;
       }));
       abilRow.appendChild(inspBtn);
-      // The backdrop lives in the panel, behind the scrolling body.
       const panel = sheet.body.parentElement!;
-      panel.prepend(h('div', { class: 'combat-backdrop', 'aria-hidden': 'true', html: combatBackdrop({ biome: biomeAt(s.pos, s.seed), seed: hashString(`${s.seed}:${key(s.pos)}`), time: this.timeOfDay() }) }));
-      sheet.set(h('div', { class: 'combat-wrap' }, foeCard, intentEl, tray.el, logEl, partyRow, abilRow, actionsEl));
+      // The arena: the place you are fighting in, with the foe above and your party below.
+      const arena = h('div', { class: `arena ${boss ? 'boss' : ''}` },
+        h('div', { class: 'arena-bg', 'aria-hidden': 'true', html: sceneArt({ biome: biomeAt(s.pos, s.seed), seed: hashString(`${s.seed}:${key(s.pos)}`), time: this.timeOfDay(), omen: s.omen }) }),
+        h('div', { class: 'arena-top' }, foePlate, foeCard),
+        partyRow);
+      sheet.set(h('div', { class: 'combat-wrap' }, arena, h('div', { class: 'fight-console' }, tray.el, logEl), abilRow, actionsEl));
 
       const refresh = () => {
         foeBar.set(enemy.hp, enemy.maxHp, 'foe', `${enemy.hp}/${enemy.maxHp}`);
@@ -1370,7 +1374,7 @@ export class Game {
           ['potion', '🧪 Potion', `${p.potions} left · 2d4+${ph.bonus}`],
           ['talk', enemy.kind === 'beast' ? '🤚 Calm' : '💬 Talk', `${enemy.talkStat.toUpperCase()} DC ${enemy.talkable ? enemy.talkDC : enemy.talkDC + 5}`],
           ['flee', '🏃 Flee', `DEX DC ${9 + tier + (boss ? 4 : 0)}`],
-          ['first_aid', '🩹 First Aid', fa > 0 ? 'heal the most hurt' : 'used'],
+          ['first_aid', '🩹 First Aid', fa > 0 ? 'heals most hurt' : 'used'],
         ];
       };
       const buttons = new Map<Action, HTMLButtonElement>();
@@ -1510,6 +1514,7 @@ export class Game {
         actionsEl.innerHTML = '';
         abilRow.remove();
         inspBtn.remove();
+        intentEl.remove(); // the fight is decided: no next move to show
         const summary: string[] = [];
         let levels = 0;
         if (end === 'win') {
