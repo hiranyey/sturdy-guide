@@ -121,7 +121,7 @@ body.edge-alert #hud, body.edge-alert #dock { animation: edgeAlert 1.4s ease-in-
 .dock-btn.badged .badge-dot { display: block; animation: pulseGlow 1.6s ease-in-out infinite; }
 
 /* ---------- Toasts ---------- */
-.toasts { position: fixed; top: calc(var(--hud-h, 130px) + 104px); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 30; }
+.toasts { position: fixed; top: calc(var(--hud-h, 130px) + 122px); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 30; }
 .toast { max-width: 88%; padding: 9px 16px; border-radius: var(--r-lg); background: rgba(15,18,34,0.94); border: 1px solid var(--line); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255,255,255,0.06); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); font-size: 0.9rem; line-height: 1.3; animation: tin 0.35s var(--ease-pop); transition: opacity 0.4s, transform 0.4s; text-align: center; }
 .toast.out { opacity: 0; transform: translateY(-10px); }
 .toast-good { border-color: rgba(95,208,138,0.6); }
