@@ -49,6 +49,8 @@ An **AI Dungeon Master** (any model on [OpenRouter](https://openrouter.ai)) writ
   - **Icons for every weapon, armour and charm**, whose look depends on the material (rusty, runed, moonlit, dragonbone, starforged).
   - **Scene banners** on every event, built from the biome, the place or landmark, and the omen. The time of day follows your torches: day, then dusk, then night.
   - **Combat backdrops** for the biome you're fighting in.
+  - **One icon set** (`src/ui/art/icons.ts`) of about 100 small drawings in the same ink-outline style. They stand in for emoji in the dock, HUD, choices, talents and achievements, so the game looks the same on every phone. On the map, each foe sign shows that foe's own portrait and the player marker is your hero's portrait.
+- **One look:** night-blue panels with gold trim for your hero and menus, parchment for the story, violet for dice and magic. Story sheets are the parchment itself, with the scene painted across the top. The colours, corner sizes and shadows are shared tokens in `src/styles/base.css`.
 - **Portrait-first:** respects safe areas for notches and the Dynamic Island, and phones held sideways see a polite "turn your phone upright" note.
 
 ## Run it
@@ -112,6 +114,7 @@ The app is a PWA, so players can **Add to Home Screen** for a full-screen, offli
 src/core/      pure game logic (no DOM): seeded hex world, rules, combat, resolution, state/save
 src/ai/        OpenRouter client (JSON mode, OAuth), prompts + validation ("director")
 src/ui/        canvas map renderer, dice roller, sheets, screens, synth audio, SVG portraits
+src/styles/    the stylesheet, one file per part of the game; base.css holds the design tokens
 ```
 
 - **Map variety** (`core/terrain.ts`, `ui/terrain-art.ts`): 10 biomes split into 30 sub-styles that form coherent patches (autumn woods, birch groves, jungle, mangroves, dead marsh, heather/rocky hills, red crags, volcanic peaks with lava, glaciers, tundra, mesas, salt flats, farmland around villages, lily shallows, kelp seas…). Rivers follow a downhill flow model: each river hex drains into exactly one lower neighbour, so streams branch, merge and run to the sea. **26 midhex landmarks** (standing stones, swords in stones, giant ribcages, crystal outcrops, windmills, wells, hot springs, oases, shipwrecks, lava vents, ice spires…) sit at hex centres. Passive ones grant lore plus a perk on first visit (heal, map reveal, Inspiration, gold, potion, XP, +1 torch). Interactive ones open their own event, and when AI is on the landmark becomes the centrepiece of the generated scene.

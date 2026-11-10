@@ -2,7 +2,7 @@
 // that scale with the hit, class-flavoured strike marks, crit flashes and
 // hit-stop, lunges and dodges, and a proper death for a defeated foe.
 // Pure presentation — nothing here touches game state.
-import { h } from './dom';
+import { h, setText } from './dom';
 import { reducedMotion } from './prefs';
 import type { ClassId } from '../core/types';
 
@@ -32,6 +32,7 @@ export class LiveBar {
   private fill = h('div', { class: 'bar-fill' });
   private trail = h('div', { class: 'bar-trail' });
   private label = h('span', { class: 'bar-label' });
+  private shown = '';
   private pct = -1;
   private timer = 0;
 
@@ -42,7 +43,7 @@ export class LiveBar {
   set(value: number, max: number, cls: string, label = '') {
     const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
     this.el.className = `bar live ${cls}`;
-    this.label.textContent = label;
+    if (label !== this.shown) setText(this.label, (this.shown = label));
     if (this.pct < 0 || calm()) {
       this.fill.style.width = this.trail.style.width = `${pct}%`;
     } else if (pct < this.pct) {

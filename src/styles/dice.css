@@ -1,0 +1,68 @@
+/* The dice roll overlay and the small dice used in a fight. */
+
+.dice-overlay { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(circle at 50% 45%, rgba(48,30,120,0.94), rgba(6,7,16,0.97) 70%); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); opacity: 0; transition: opacity 0.25s; padding: 16px; z-index: 20; }
+.dice-overlay.open { opacity: 1; }
+.dice-card { width: 100%; max-width: 380px; text-align: center; }
+.dice-title { font-family: var(--head); font-size: 1.4rem; color: var(--gold-hi); text-shadow: 0 2px 12px rgba(0,0,0,0.8); }
+.dice-sub { font-style: italic; color: var(--text-2); margin-top: 2px; }
+.dc-row { display: flex; justify-content: center; gap: 10px; margin: 14px 0 6px; align-items: center; }
+.dc-badge { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 58px; height: 64px; background: linear-gradient(180deg, #3a2a12, #1e150a); border: 2px solid var(--gold); clip-path: polygon(50% 0, 100% 18%, 100% 70%, 50% 100%, 0 70%, 0 18%); font-family: var(--head); font-size: 1.5rem; color: var(--gold-hi); }
+.dc-badge small { font-size: 0.6rem; letter-spacing: 0.15em; color: var(--gold); margin-bottom: -2px; }
+.mod-badge { font-family: var(--head); padding: 6px 12px; border-radius: var(--r-sm); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); font-size: 0.9rem; }
+.odds { font-size: var(--t-sm); font-weight: 600; }
+.odds.easy { color: var(--good); } .odds.fair { color: #ffc35a; } .odds.hard { color: var(--bad); }
+.dice-row { display: flex; justify-content: center; gap: 18px; margin: 18px 0 6px; min-height: 160px; align-items: center; }
+.die-host { position: relative; cursor: pointer; }
+.die-host.big { width: 150px; height: 150px; animation: breathe 2s ease-in-out infinite; }
+.dice-row .die-host.big:nth-child(2) { width: 120px; height: 120px; }
+@keyframes breathe { 50% { transform: scale(1.05) rotate(-3deg); } }
+.die-host svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.6)) drop-shadow(0 0 22px rgba(130,100,255,0.45)); }
+.d20-num { font-family: var(--head); font-weight: 800; font-size: 22px; fill: #fff; paint-order: stroke; stroke: rgba(30,10,80,0.7); stroke-width: 2px; }
+.die-host.rolling { animation: tumble 0.55s linear infinite; }
+@keyframes tumble { 0% { transform: rotate(0) translateY(0) scale(1); } 25% { transform: rotate(95deg) translateY(-18px) scale(0.92, 1.05); } 50% { transform: rotate(185deg) translateY(0) scale(1.05, 0.92); } 75% { transform: rotate(270deg) translateY(-10px) scale(0.95); } 100% { transform: rotate(360deg) translateY(0) scale(1); } }
+.die-host.landed { animation: land 0.45s cubic-bezier(.2,1.8,.4,1); }
+@keyframes land { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.die-host.crit svg { filter: drop-shadow(0 0 26px #ffd76a) drop-shadow(0 0 50px #ffb02e); }
+.die-host.crit { --die-hi: #fff0a8; --die-mid: #e6a92e; --die-lo: #8a5a10; --die-edge: #fff6d0; }
+.die-host.fumble { --die-hi: #ff8a8a; --die-mid: #a82a2a; --die-lo: #4a0a0a; --die-edge: #ffd0d0; animation: shakeX 0.45s; }
+.die-host.fumble svg { filter: drop-shadow(0 0 22px #ff3a3a); }
+.die-host.discard { opacity: 0.3; transform: scale(0.85); filter: grayscale(1); transition: all 0.4s; }
+.die-host.ghost { opacity: 0.85; }
+.dice-row.thrown .die-host { animation: throwUp 0.5s cubic-bezier(.2,.8,.3,1), tumble 0.55s linear 0.5s infinite; }
+@keyframes throwUp { 0% { transform: translateY(0) rotate(0); } 50% { transform: translateY(calc(var(--throw, 120px) * -1)) rotate(260deg) scale(0.85); } 100% { transform: translateY(0) rotate(400deg); } }
+.tap-hint { color: var(--arcane-hi); font-size: 0.9rem; animation: blink 1.4s ease-in-out infinite; min-height: 1.3em; }
+.roll-result { min-height: 90px; opacity: 0; transform: translateY(8px); transition: all 0.3s; }
+.roll-result.show { opacity: 1; transform: none; }
+.roll-result .math { font-size: 1.1rem; color: #ddd; }
+.roll-result .math b { font-size: 1.5rem; font-family: var(--head); color: #fff; }
+.roll-result .verdict { font-family: var(--head); font-size: 1.7rem; font-weight: 800; letter-spacing: 0.06em; margin: 4px 0 6px; }
+.roll-result.ok .verdict { color: var(--good); text-shadow: 0 0 18px rgba(95,208,138,0.6); }
+.roll-result.bad .verdict { color: #ff8a7a; }
+.roll-result.crit .verdict { color: var(--gold-hi); text-shadow: 0 0 22px rgba(255,200,80,0.9); animation: pulseBig 0.8s ease-in-out infinite alternate; }
+.roll-result.fumble .verdict { color: var(--bad); text-shadow: 0 0 18px rgba(255,60,60,0.7); }
+@keyframes pulseBig { to { transform: scale(1.08); } }
+.btn-inspire { margin-top: 10px; background: rgba(255,215,106,0.1); border: 1px dashed var(--gold); color: var(--gold-hi); font-size: 0.85rem; box-shadow: none; }
+.btn-inspire.on { background: linear-gradient(180deg, #ffe08a, var(--gold)); color: var(--on-gold); border-style: solid; box-shadow: 0 0 18px rgba(255,215,106,0.6); }
+.lucky-note { margin-top: 6px; font-size: 0.85rem; color: #6effa0; }
+.spark { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; animation: spark 1s cubic-bezier(.1,.8,.3,1) forwards; box-shadow: 0 0 8px currentColor; }
+@keyframes spark { from { transform: translate(-50%, -50%) scale(1); opacity: 1; } to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.2); opacity: 0; } }
+.sdie { width: 100%; height: 100%; overflow: visible; }
+.sdie-num { font-family: var(--head); font-weight: 800; font-size: 40px; fill: #fff; }
+
+/* 3D d20 (die3d.ts) */
+.die-host.d3.big, .die-host.d3.rolling { animation: none; }
+.die-host.d3.landed { animation: land3d 0.35s cubic-bezier(.2,1.6,.4,1); }
+@keyframes land3d { 0% { transform: scale(1.08, 0.94); } 100% { transform: scale(1); } }
+.dice-row.thrown .die-host.d3 { animation: throwUp3d 0.45s cubic-bezier(.2,.8,.3,1); }
+@keyframes throwUp3d { 50% { transform: translateY(calc(var(--throw, 120px) * -1)) scale(0.9); } }
+.die-host.d3:not(.crit):not(.fumble) svg { filter: drop-shadow(0 0 20px rgba(130,100,255,0.4)); }
+.d3-face { fill: var(--die-mid); stroke: var(--die-edge); stroke-width: 1.1; stroke-linejoin: round; stroke-opacity: 0.85; }
+.d3-shade { pointer-events: none; }
+.d3-num { fill: #fff; font-family: var(--head); font-weight: 800; paint-order: stroke; stroke: rgba(20,8,60,0.7); stroke-width: 2.2px; pointer-events: none; }
+.die-host.crit .d3-num { stroke: rgba(90,50,0,0.8); }
+.d3-shadow { fill: #000; }
+
+@media (max-height: 640px) {
+  .die-host.big { width: 120px; height: 120px; }
+  .dice-row { min-height: 130px; }
+}

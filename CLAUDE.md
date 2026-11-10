@@ -30,11 +30,14 @@ This updates `package.json` and `package-lock.json`. Don't create git tags. Neve
 - `src/core/` — pure game logic, no DOM: world, rules, talents, companions, combat, resolve, state/save.
 - `src/ai/` — OpenRouter client and prompts. The engine decides outcomes; the LLM only narrates.
 - `src/ui/` — canvas map, dice, sheets, screens, audio, procedural SVG art (`src/ui/art/`).
+- `src/styles/` — the stylesheet, split by area (`base`, `chrome`, `surfaces`, `cards`, `dice`, `combat`, `panels`, `screens`); `src/style.css` only imports them.
 
 ## Conventions
 
 - Saves live in localStorage (`hexbound.save.v1`). When the save shape changes, migrate old saves in `migrateSave` (`src/core/companions.ts`) rather than breaking them.
 - Art is procedural SVG/canvas. Don't add external image assets. SVG gradient ids must be unique per call.
+- Icons: `src/ui/art/icons.ts` is the one icon set (32-unit SVGs, ink outline, flat tones, no gradients or ids). `h()` in `src/ui/dom.ts` swaps any emoji that has an icon (`EMOJI` map) for its drawing when text is added to the page, so core code can keep writing `"-1 🔥"`. Text set with `textContent` is not converted: use `setText(el, text)`. When you use a new emoji as an icon in the UI, add a drawing and a mapping for it; `icons.test.ts` fails if a sign, block, weather, omen, ability, talent or achievement glyph has none. On the canvas map use `svgImage()` (`src/ui/art/raster.ts`) to draw icons, foe art and portraits.
+- Look and feel: use the tokens in `src/styles/base.css` (night surfaces, gold trim, parchment and ink, `--r-*` radii, `--sh-*` shadows, `--card` for a raised card) instead of one-off colours. Night-blue sheets (`Sheet('panel')`) are for the hero and menus; story sheets (`Sheet('event')`) are full-width parchment holding one `.parchment` card, with an optional `.ev-scene` banner across the top. Buttons are `.btn` (quiet), `.btn-primary` (gold) and `.buy` (small gold); they all press down the same way.
 - The player and companions share the `Hero` type; give new combat rules to both.
 - Deploys: pushes to `main` build the Docker image via `.github/workflows/deploy.yml`.
 - Screen edges: `#map-wrap` fills the whole screen and the HUD/dock float over it as frosted glass tinted by the scene (`src/ui/edges.ts`, also sets `theme-color`). Overlay UI on the map must stay between `var(--hud-h)` and `var(--dock-h)`; the camera gets the same insets via `map.setInsets`.

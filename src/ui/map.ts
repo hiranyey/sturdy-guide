@@ -9,30 +9,71 @@ import type { Biome, GameState, PoiKind } from '../core/types';
 import { styleAt, riverMask, riverAt, landmarkAt } from '../core/terrain';
 import { reducedMotion } from './prefs';
 import { hexPath, palette, decorate, drawRiver, riverSegments, drawLandmark, waterGlint, type Ctx } from './terrain-art';
+import { svgImage } from './art/raster';
+import { icon, iconFor } from './art/icons';
+import { foeArt } from './art/foes';
+import { heroPortraitSvg } from './art/heroes';
+import type { EnemySpec } from '../core/types';
 
 
 // ---------- POI icons ----------
 /** A closed hex: darkened, hatched, a pulsing red rim and what's in the way. */
+/** Draw one of the game's icons for an emoji, centred, `d` wide. False if it has none (or it is still loading). */
+function drawGlyph(ctx: Ctx, emoji: string, x: number, y: number, d: number): boolean {
+  const id = iconFor(emoji);
+  const img = id ? svgImage(`ic:${id}`, () => icon(id, 128)) : null;
+  if (!img) return false;
+  ctx.drawImage(img, x - d / 2, y - d / 2, d, d);
+  return true;
+}
+
 /** A sign token: what waits on a nearby tile (foe, scene, quick choice, cache, herbs). */
-function drawSign(ctx: Ctx, icon: string, ring: string, x: number, y: number, s: number, t: number, still: boolean) {
+function drawSign(ctx: Ctx, g: { icon: string; ring: string; foe?: EnemySpec }, x: number, y: number, s: number, t: number, still: boolean) {
   const bob = still ? 0 : Math.sin(t / 520 + x * 0.01) * s * 0.035;
-  const cy = y - s * 0.08 + bob, r = s * 0.3;
+  const cy = y - s * 0.1 + bob, r = s * (g.foe ? 0.33 : 0.3);
   ctx.save();
+  // a soft shadow on the ground keeps the token from floating
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + s * 0.28, r * 0.75, r * 0.24, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // the disc
+  const disc = ctx.createRadialGradient(x, cy - r * 0.3, r * 0.1, x, cy, r);
+  disc.addColorStop(0, g.foe ? '#4a3350' : '#34304e');
+  disc.addColorStop(1, '#17141f');
   ctx.beginPath();
   ctx.arc(x, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(16,14,28,0.78)';
-  ctx.shadowColor = 'rgba(0,0,0,0.5)';
-  ctx.shadowBlur = 5;
+  ctx.fillStyle = disc;
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
   ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.lineWidth = Math.max(1.5, s * 0.06);
-  ctx.strokeStyle = ring;
+  ctx.shadowColor = 'transparent';
+  // what it is: the foe's own portrait, or the sign's icon
+  const foeImg = g.foe ? svgImage(`foe:${g.foe.kind}:${g.foe.name}`, () => foeArt(g.foe!)) : null;
+  if (foeImg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, cy, r - 0.5, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(foeImg, x - r, cy - r, r * 2, r * 2);
+    ctx.restore();
+  } else if (!drawGlyph(ctx, g.foe ? '⚔' : g.icon, x, cy, r * 1.42)) {
+    ctx.font = `${Math.round(s * 0.36)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff4dc';
+    ctx.fillText(g.icon, x, cy + s * 0.02);
+  }
+  // the ring says what kind of thing it is
+  ctx.beginPath();
+  ctx.arc(x, cy, r, 0, Math.PI * 2);
+  ctx.lineWidth = Math.max(2, s * 0.065);
+  ctx.strokeStyle = '#17141f';
   ctx.stroke();
-  ctx.font = `${Math.round(s * 0.36)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#fff4dc';
-  ctx.fillText(icon, x, cy + s * 0.02);
+  ctx.lineWidth = Math.max(1.5, s * 0.042);
+  ctx.strokeStyle = g.ring;
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -60,13 +101,15 @@ function drawBlock(ctx: Ctx, icon: string, x: number, y: number, s: number, t: n
   ctx.globalAlpha = 1;
   ctx.filter = 'none';
   ctx.globalCompositeOperation = 'source-over';
-  ctx.font = `${Math.round(s * 0.62)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
   ctx.shadowColor = 'rgba(0,0,0,0.6)';
   ctx.shadowBlur = 6;
-  ctx.fillStyle = '#fff4dc'; // only shows where no colour-emoji font exists
-  ctx.fillText(icon, x, y - s * 0.04);
+  if (!drawGlyph(ctx, icon, x, y - s * 0.04, s * 0.78)) {
+    ctx.font = `${Math.round(s * 0.62)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff4dc'; // only shows where no colour-emoji font exists
+    ctx.fillText(icon, x, y - s * 0.04);
+  }
   ctx.restore();
 }
 
@@ -685,7 +728,7 @@ export class MapView {
 
     const pois: { kind: PoiKind | 'quest'; x: number; y: number; done: boolean }[] = [];
     const blocked: { icon: string; x: number; y: number }[] = [];
-    const signs: { icon: string; ring: string; x: number; y: number }[] = [];
+    const signs: { icon: string; ring: string; foe?: EnemySpec; x: number; y: number }[] = [];
     // what waits nearby is visible a little beyond your feet (less in thick woods)
     const scout = Math.max(2, vision);
     for (let r = rMin; r <= rMax; r++) {
@@ -727,7 +770,7 @@ export class MapView {
         if (bl) blocked.push({ icon: BLOCK_INFO[bl.kind].icon, x, y });
         if (!this.demo && !bl && distance(hx, s.pos) <= scout && (hx.q !== s.pos.q || hx.r !== s.pos.r)) {
           const sg = signAt(s, hx);
-          if (sg) signs.push({ icon: sg.kind === 'foe' && sg.enemy?.emoji ? sg.enemy.emoji : SIGNS[sg.kind].icon, ring: SIGNS[sg.kind].ring, x, y });
+          if (sg) signs.push({ icon: sg.kind === 'foe' && sg.enemy?.emoji ? sg.enemy.emoji : SIGNS[sg.kind].icon, ring: SIGNS[sg.kind].ring, foe: sg.kind === 'foe' ? sg.enemy : undefined, x, y });
         }
         const poi = poiAt(hx, s.seed);
         const isQuest = s.quest && s.quest.target.q === q && s.quest.target.r === r;
@@ -759,7 +802,7 @@ export class MapView {
     }
 
     for (const b of blocked) drawBlock(ctx, b.icon, b.x, b.y, size, t);
-    for (const g of signs) drawSign(ctx, g.icon, g.ring, g.x, g.y, size, t, reducedMotion());
+    for (const g of signs) drawSign(ctx, g, g.x, g.y, size, t, reducedMotion());
 
     // tap flash
     if (this.flash) {
@@ -795,61 +838,84 @@ export class MapView {
     const allies = party(s);
     allies.forEach((a, i) => {
       const ang = t / 1200 + i * Math.PI;
-      const ax = this.player.x + ox + Math.cos(ang) * size * 0.55;
-      const ay = this.player.y + oy + size * 0.15 + Math.sin(ang) * size * 0.18;
+      const ax = this.player.x + ox + Math.cos(ang) * size * 0.58;
+      const ay = this.player.y + oy + size * 0.12 + Math.sin(ang) * size * 0.18;
+      const ar = size * 0.17;
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.beginPath();
-      ctx.ellipse(ax, ay + size * 0.16, size * 0.14, size * 0.05, 0, 0, Math.PI * 2);
+      ctx.ellipse(ax, ay + ar * 1.15, ar * 0.9, ar * 0.32, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = `hsl(${(a.name.charCodeAt(0) * 37) % 360} 55% 55%)`;
-      ctx.beginPath();
-      ctx.arc(ax, ay, size * 0.15, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
+      const face = a.hero ? svgImage(`hero:${a.hero.cls}:${a.name}`, () => heroPortraitSvg(a.name, a.hero!.cls, 128)) : null;
+      if (face) ctx.drawImage(face, ax - ar, ay - ar, ar * 2, ar * 2);
+      else {
+        ctx.fillStyle = `hsl(${(a.name.charCodeAt(0) * 37) % 360} 55% 55%)`;
+        ctx.beginPath();
+        ctx.arc(ax, ay, ar, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${size * 0.17}px Cinzel, serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(a.name[0], ax, ay + 1);
+      }
+      ctx.strokeStyle = '#fff8e0';
       ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(ax, ay, ar, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${size * 0.17}px Cinzel, serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(a.name[0], ax, ay + 1);
     });
 
-    // player token
+    // player token: the hero's portrait on a pin, in their class colour
     const cls = CLASSES[s.player.cls];
     const px = this.player.x + ox;
     const bob = Math.sin(t / 400) * size * 0.04;
-    const py = this.player.y + oy - this.player.hop - size * 0.18 + bob;
+    const pr = size * 0.35;
+    const py = this.player.y + oy - this.player.hop - size * 0.36 + bob;
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(this.player.x + ox, this.player.y + oy + size * 0.18, size * 0.3 - this.player.hop * 0.15, size * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.player.x + ox, this.player.y + oy + size * 0.2, size * 0.26 - this.player.hop * 0.15, size * 0.09, 0, 0, Math.PI * 2);
     ctx.fill();
-    const glow = ctx.createRadialGradient(px, py, size * 0.1, px, py, size * 0.7);
-    glow.addColorStop(0, cls.color + '88');
+    const glow = ctx.createRadialGradient(px, py, size * 0.1, px, py, size * 0.78);
+    glow.addColorStop(0, cls.color + '99');
     glow.addColorStop(1, cls.color + '00');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(px, py, size * 0.7, 0, Math.PI * 2);
+    ctx.arc(px, py, size * 0.78, 0, Math.PI * 2);
     ctx.fill();
-    // pawn body
-    ctx.fillStyle = cls.color;
+    // the pin: a disc with a point resting on the tile
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+    ctx.fillStyle = '#fff8e0';
     ctx.beginPath();
-    ctx.moveTo(px - size * 0.24, py + size * 0.22);
-    ctx.quadraticCurveTo(px - size * 0.2, py - size * 0.05, px, py - size * 0.08);
-    ctx.quadraticCurveTo(px + size * 0.2, py - size * 0.05, px + size * 0.24, py + size * 0.22);
+    ctx.moveTo(px - pr * 0.55, py + pr * 0.85);
+    ctx.lineTo(px, py + pr * 1.62);
+    ctx.lineTo(px + pr * 0.55, py + pr * 0.85);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(px, py - size * 0.22, size * 0.17, 0, Math.PI * 2);
+    ctx.arc(px, py, pr + size * 0.055, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#fff8e0';
-    ctx.lineWidth = 2;
+    ctx.restore();
+    const me = svgImage(`hero:${s.player.cls}:${s.player.name}`, () => heroPortraitSvg(s.player.name, s.player.cls, 128));
+    if (me) ctx.drawImage(me, px - pr, py - pr, pr * 2, pr * 2);
+    else {
+      ctx.fillStyle = cls.color;
+      ctx.beginPath();
+      ctx.arc(px, py, pr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff8e0';
+      ctx.font = `bold ${size * 0.26}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cls.glyph, px, py + 1);
+    }
+    ctx.strokeStyle = cls.color;
+    ctx.lineWidth = Math.max(1.5, size * 0.035);
+    ctx.beginPath();
+    ctx.arc(px, py, pr + size * 0.02, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = '#fff8e0';
-    ctx.font = `bold ${size * 0.2}px serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(cls.glyph, px, py - size * 0.21);
   }
 
   private drawEdgeArrow(x: number, y: number, t: number, dist: number) {
@@ -884,9 +950,18 @@ export class MapView {
     ctx.rotate(-ang);
     ctx.fillStyle = '#ffd76a';
     ctx.font = 'bold 12px Cinzel, serif';
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`★${dist}`, 0, 1);
+    const label = String(dist);
+    const star = svgImage('ic:star', () => icon('star', 128));
+    if (star) {
+      const w = ctx.measureText(label).width, sw = 13;
+      ctx.drawImage(star, -(sw + w + 1) / 2, -sw / 2 - 0.5, sw, sw);
+      ctx.textAlign = 'left';
+      ctx.fillText(label, -(sw + w + 1) / 2 + sw + 1, 1);
+    } else {
+      ctx.textAlign = 'center';
+      ctx.fillText(`★${dist}`, 0, 1);
+    }
     ctx.restore();
   }
 }

@@ -1,4 +1,5 @@
 import { sfx } from './audio';
+import { hasIcon, iconize } from './art/icons';
 type Child = Node | string | number | null | undefined | false | Child[];
 type Props = Record<string, unknown> & { class?: string; style?: string };
 
@@ -18,12 +19,23 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props | 
   return el;
 }
 
+const PLAIN_ONLY = new Set(['OPTION', 'TEXTAREA', 'TITLE', 'SELECT']);
+
 function append(el: Node, children: Child[]) {
   for (const c of children) {
     if (c === null || c === undefined || c === false) continue;
     if (Array.isArray(c)) append(el, c);
-    else el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+    else if (c instanceof Node) el.appendChild(c);
+    // Emoji used as icons become the game's own drawings (not inside form controls, which only take text).
+    else if (typeof c === 'string' && !PLAIN_ONLY.has((el as Element).tagName) && hasIcon(c)) for (const part of iconize(c)) el.appendChild(typeof part === 'string' ? document.createTextNode(part) : part);
+    else el.appendChild(document.createTextNode(String(c)));
   }
+}
+
+/** Replace an element's text, drawing any emoji icons in the game's own style. */
+export function setText(el: HTMLElement, text: string) {
+  el.textContent = '';
+  append(el, [text]);
 }
 
 export const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
@@ -88,7 +100,7 @@ export class Sheet {
     this.body = h('div', { class: `sheet-body ${cls}` });
     const backdrop = h('div', { class: 'sheet-backdrop', onclick: () => opts.dismissable && this.close() });
     const grip = h('div', { class: 'sheet-grip', 'aria-hidden': 'true' });
-    const panel = h('div', { class: 'sheet-panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.label ?? 'Panel' }, grip, this.body);
+    const panel = h('div', { class: `sheet-panel ${cls.split(/\s+/).filter(Boolean).map((c) => `is-${c}`).join(' ')}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.label ?? 'Panel' }, grip, this.body);
     this.root = h('div', { class: 'sheet' }, backdrop, panel);
     this.done = new Promise((r) => (this.resolver = r));
     document.getElementById('overlay')!.appendChild(this.root);

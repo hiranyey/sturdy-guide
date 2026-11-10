@@ -1,0 +1,186 @@
+/* ---------- Design tokens ----------
+   One palette for the whole game: night-blue surfaces, gold trim, parchment for story,
+   violet for dice and magic. New UI should use these instead of one-off colours. */
+:root {
+  /* night surfaces, darkest to lightest */
+  --night-0: #0b0d1c;
+  --night-1: #0f1222;
+  --night-2: #151a36;
+  --night-3: #1d2242;
+  --night-4: #2a3058;
+  --bg: var(--night-1);
+  --panel: #171b31;
+  --panel-2: #1f2440;
+  /* a raised card on a night surface */
+  --card: linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.03));
+  --card-line: rgba(255,255,255,0.1);
+  --hair: rgba(255,255,255,0.07);
+  --well: rgba(0,0,0,0.28);
+
+  /* gold trim */
+  --gold: #d4a64a;
+  --gold-hi: #ffd76a;
+  --gold-1: #ffe9a8;
+  --gold-2: #e9bf5e;
+  --gold-3: #b8862e;
+  --gold-4: #7a5618;
+  --line: rgba(212, 166, 74, 0.35);
+  --on-gold: #2a1a05;
+
+  /* text on night */
+  --text: #ece6d6;
+  --text-2: #d8d2c0;
+  --muted: #9a97a8;
+
+  /* parchment and ink */
+  --parch-1: #fbf3de;
+  --parch: #f4e9cf;
+  --parch-2: #e9d9b4;
+  --parch-3: #dcc898;
+  --parch-line: #c9a768;
+  --parch-card: #fff8e6;
+  --ink: #2b2116;
+  --ink-2: #3a2a12;
+  --ink-soft: #6b5a43;
+  --ink-gold: #8a6420;
+
+  /* meaning */
+  --good: #5fd08a;
+  --good-ink: #1f7a45;
+  --bad: #ff6b6b;
+  --bad-ink: #b0352a;
+  --hp: #e04a3c;
+  --arcane: #8b6cf0;
+  --arcane-hi: #c9b6ff;
+  --arcane-ink: #6b47b8;
+
+  /* dice (also read by the SVG dice) */
+  --die-hi: #9a7cff;
+  --die-mid: #5a3fcf;
+  --die-lo: #2e1f7a;
+  --die-edge: #d9ceff;
+
+  /* shape */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-pill: 999px;
+
+  /* depth */
+  --sh-1: 0 2px 8px rgba(0,0,0,0.35);
+  --sh-2: 0 8px 24px rgba(0,0,0,0.45);
+  --sh-3: 0 18px 56px rgba(0,0,0,0.65);
+  --glow-gold: 0 0 16px rgba(255,215,106,0.45);
+
+  /* type */
+  --head: 'Cinzel', Georgia, serif;
+  --body: 'Alegreya', Georgia, serif;
+  --t-2xs: 0.64rem;
+  --t-xs: 0.72rem;
+  --t-sm: 0.82rem;
+  --t-md: 0.92rem;
+  --t-lg: 1.05rem;
+  --t-xl: 1.3rem;
+  --t-2xl: 1.7rem;
+
+  /* motion */
+  --ease-out: cubic-bezier(.2,.8,.2,1);
+  --ease-pop: cubic-bezier(.2,1.5,.4,1);
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  /* Minus the strip iOS sometimes leaves under the page (src/ui/viewport.ts). */
+  --safe-b: max(0px, calc(env(safe-area-inset-bottom, 0px) - var(--vp-gap, 0px)));
+
+  /* Scene-tinted screen edges (edges.ts overrides these). */
+  --edge-bg: rgba(17,20,42,0.74);
+  --edge-fade: rgba(17,20,42,0.5);
+  --edge-line: rgba(212,166,74,0.3);
+  --edge-deep: #0b0d1c;
+}
+
+/* ---------- Base ---------- */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--edge-deep); color: var(--text); font-family: var(--body); overflow: hidden; overscroll-behavior: none; transition: background-color 1.2s ease; }
+body { -webkit-user-select: none; user-select: none; font-size: 1rem; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:disabled { opacity: 0.45; cursor: default; }
+input { font: inherit; }
+h1, h2, h3 { font-family: var(--head); margin: 0.2em 0 0.4em; letter-spacing: 0.02em; }
+h2 { font-size: var(--t-xl); line-height: 1.15; }
+/* Section heading: small gold caps with a rule that fades out. */
+h3 { display: flex; align-items: center; gap: 10px; font-size: var(--t-sm); color: var(--gold); margin: 1.4em 0 0.5em; text-transform: uppercase; letter-spacing: 0.12em; }
+h3::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+.center { text-align: center; }
+.wide { width: 100%; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+button:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+
+/* Icons (art/icons.ts) follow the size of the text they sit in. */
+.ic { display: inline-block; width: 1.25em; height: 1.25em; vertical-align: -0.27em; flex: none; overflow: visible; }
+
+/* ---------- Buttons ---------- */
+.btn { position: relative; display: inline-flex; flex-flow: row wrap; align-items: center; justify-content: center; column-gap: 0.35em; padding: 11px 18px; margin: 4px 0; border-radius: var(--r-md); background: linear-gradient(180deg, var(--night-4), var(--night-3)); color: var(--text); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 3px 0 var(--night-0), var(--sh-1); font-family: var(--head); font-size: var(--t-md); letter-spacing: 0.03em; transition: transform 0.08s, box-shadow 0.08s, filter 0.2s; }
+.btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--night-0); }
+.btn small { flex-basis: 100%; text-align: center; font-family: var(--body); font-size: 0.75rem; opacity: 0.8; letter-spacing: 0; margin-top: 2px; }
+.btn .ic { vertical-align: 0; }
+.btn-primary { background: linear-gradient(180deg, #f3cf72, var(--gold-3)); color: var(--on-gold); border-color: var(--gold-1); box-shadow: 0 4px 0 var(--gold-4), 0 8px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.45); text-shadow: 0 1px 0 rgba(255,255,255,0.3); }
+.btn-primary:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--gold-4), inset 0 1px 0 rgba(255,255,255,0.45); }
+.btn-danger { background: linear-gradient(180deg, #5c2029, #40161d); border-color: #a33; color: #ffb3b3; box-shadow: 0 3px 0 #1e0a0d, var(--sh-1); }
+.btn-danger:active:not(:disabled) { box-shadow: 0 1px 0 #1e0a0d; }
+.btn.big { padding: 14px 18px; font-size: var(--t-lg); min-width: 240px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.link { color: var(--ink-soft); text-decoration: underline; font-size: 0.8rem; padding: 4px 0; }
+/* On parchment the quiet button is tan, not night-blue. */
+.parchment .btn:not(.btn-primary), .modal-card .btn:not(.btn-primary) { background: linear-gradient(180deg, #ecdcb4, #dcc898); color: var(--ink); border-color: #b8975a; box-shadow: 0 3px 0 #b8975a; }
+.parchment .btn:not(.btn-primary):active:not(:disabled), .modal-card .btn:not(.btn-primary):active:not(:disabled) { box-shadow: 0 1px 0 #b8975a; }
+
+/* Small gold action button (buy, drink, give). */
+.buy { flex: none; padding: 8px 12px; border-radius: var(--r-sm); background: linear-gradient(180deg, #f3cf72, var(--gold-3)); color: var(--on-gold); font-family: var(--head); font-size: 0.8rem; box-shadow: 0 2px 0 var(--gold-4), inset 0 1px 0 rgba(255,255,255,0.4); transition: transform 0.08s; }
+.buy:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.4); }
+.buy.sell { background: linear-gradient(180deg, #8fd1a4, #3f9a62); color: #0b2a17; box-shadow: 0 2px 0 #1f5a33; }
+.buy.give { display: inline-flex; align-items: center; gap: 2px; padding: 5px 6px; background: linear-gradient(180deg, #a7c4ff, #5a7ac8); box-shadow: 0 2px 0 #2a3f78; color: #0b1838; }
+.buy.give svg { border-radius: 50%; }
+.buy.glow { box-shadow: 0 0 12px rgba(255,215,106,0.7), 0 2px 0 var(--gold-4); }
+
+/* ---------- Bars ---------- */
+.bar { position: relative; height: 14px; border-radius: 8px; background: rgba(0,0,0,0.5); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08); }
+.bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 8px; transition: width 0.4s var(--ease-out); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 0 rgba(0,0,0,0.18); }
+.bar-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 0.68rem; font-weight: 600; text-shadow: 0 1px 2px #000; letter-spacing: 0.02em; white-space: nowrap; }
+.bar-label .ic { width: 0.95em; height: 0.95em; vertical-align: 0; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6)); }
+.bar.hp .bar-fill { background: linear-gradient(90deg, #c0392b, #e8584a); }
+.bar.hp.low .bar-fill { animation: lowhp 0.9s ease-in-out infinite; }
+.bar.hp.down .bar-fill { background: #333; }
+@keyframes lowhp { 50% { filter: brightness(1.5); } }
+.bar.xp { height: 6px; }
+.bar.xp .bar-fill { background: linear-gradient(90deg, #7b5cff, #b49cff); }
+.bar.xp .bar-label { display: none; }
+.bar.foe .bar-fill { background: linear-gradient(90deg, #8e2de2, #e94057); }
+.bar.aff .bar-fill { background: linear-gradient(90deg, #ff6b8b, #ffb36b); }
+/* Live bars in a fight leave a trail where the HP used to be (combat-fx.ts). */
+.bar.live .bar-trail { position: absolute; inset: 0 auto 0 0; border-radius: 8px; background: rgba(255,236,190,0.85); transition: width 0.55s cubic-bezier(.4,0,.6,1); }
+.bar.live .bar-trail.heal { background: rgba(110,255,160,0.55); box-shadow: 0 0 8px rgba(110,255,160,0.6); }
+.bar.live .bar-fill { transition: width 0.45s var(--ease-out); }
+.bar.live.jolt { animation: jolt 0.35s ease; }
+@keyframes jolt { 0% { filter: brightness(2); transform: translateX(0); } 25% { transform: translateX(-3px); } 50% { transform: translateX(3px); } 100% { filter: none; transform: none; } }
+
+/* ---------- Shared motion ---------- */
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes pop { from { transform: scale(0.3); opacity: 0; } }
+@keyframes popIn { from { transform: scale(0.7); opacity: 0; } }
+@keyframes fadein { from { opacity: 0; } }
+@keyframes spin { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(200deg) scale(1.1); } 100% { transform: rotate(360deg) scale(1); } }
+@keyframes twinkle { 50% { filter: drop-shadow(0 0 6px gold); transform: scale(1.15); } }
+@keyframes blink { 50% { opacity: 0.45; } }
+@keyframes bob { 50% { transform: translateY(6px); } }
+@keyframes shakeX { 20%, 60% { transform: translateX(-8px) rotate(-4deg); } 40%, 80% { transform: translateX(8px) rotate(4deg); } }
+@keyframes pulseGlow { 50% { box-shadow: 0 0 2px rgba(255,215,106,0.3); transform: scale(0.9); } }
+body.shake #app, body.shake .sheet-panel { animation: shakeX 0.35s; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

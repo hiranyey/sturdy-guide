@@ -1,4 +1,4 @@
-import { h, $, Sheet, modal, toast, typewrite, wait, bar, vibrate, longPress, popover } from './dom';
+import { h, $, Sheet, modal, toast, typewrite, wait, bar, vibrate, longPress, popover, setText } from './dom';
 import { setMood, scene, stinger } from './music';
 import { setAmbience, CAMP_AMBIENCE, type SceneCtx } from './ambience';
 import { edgeScene, edgeMood } from './edges';
@@ -21,6 +21,7 @@ import { foeArt } from './art/foes';
 import { LiveBar, floatText, floatKind, pulse, sparks, strike, flash, hitStop, slay, calm, STRIKE_FOR } from './combat-fx';
 import { sceneArt, combatBackdrop, type SceneTime } from './art/scenes';
 import { itemArt, potionArt, goldArt } from './art/items';
+import { iconEl } from './art/icons';
 import { openSettings } from './settings-sheet';
 import { key, eq, distance, toPixel, compass, spiral, type Hex } from '../core/hex';
 import { biomeAt, poiAt, isPassable, moveCost, tierAt, regionKey, findPath, pickQuestTarget, visionRadius, BIOME_INFO } from '../core/world';
@@ -83,9 +84,9 @@ export class Game {
     this.mapUi.append(
       h('div', { class: 'region-banner', id: 'region-banner' }),
       h('div', { class: 'map-ctrls' },
-        h('button', { class: 'mc', 'aria-label': 'Zoom in', onclick: () => this.map.zoom(1.2) }, '+'),
-        h('button', { class: 'mc', 'aria-label': 'Zoom out', onclick: () => this.map.zoom(1 / 1.2) }, '−'),
-        h('button', { class: 'mc recenter', 'aria-label': 'Recenter', onclick: () => this.map.recenter() }, '◎'),
+        h('button', { class: 'mc', 'aria-label': 'Zoom in', onclick: () => this.map.zoom(1.2) }, iconEl('plus')),
+        h('button', { class: 'mc', 'aria-label': 'Zoom out', onclick: () => this.map.zoom(1 / 1.2) }, iconEl('minus')),
+        h('button', { class: 'mc recenter', 'aria-label': 'Recenter', onclick: () => this.map.recenter() }, iconEl('aim')),
       ),
     );
     this.ticker = h('button', { class: 'ticker', onclick: () => this.openJournal() }, 'Tap a glowing tile to move.');
@@ -116,7 +117,7 @@ export class Game {
       const d = distance(s.pos, s.quest.target);
       const ang = Math.atan2(b.y - a.y, b.x - a.x);
       questChip = h('button', { class: 'quest-chip', onclick: () => this.openJournal() },
-        h('span', { class: 'qc-arrow', style: `transform:rotate(${ang}rad)` }, '➤'),
+        h('span', { class: 'qc-arrow', style: `transform:rotate(${ang}rad)` }, iconEl('arrow')),
         h('span', { class: 'qc-title' }, s.quest.title),
         h('span', { class: 'qc-dist' }, d === 0 ? 'here' : `${d} hex ${compass(b.x - a.x, b.y - a.y)}`),
       );
@@ -159,7 +160,7 @@ export class Game {
   }
 
   setTicker(text: string) {
-    this.ticker.textContent = text;
+    setText(this.ticker, text);
     this.ticker.classList.remove('pulse');
     void this.ticker.offsetWidth;
     this.ticker.classList.add('pulse');
@@ -736,7 +737,7 @@ export class Game {
     choices.append(h('button', { class: 'choice choice-leave', onclick: () => { sfx.tap(); sheet.close(); } },
       h('span', { class: 'clabel' }, 'Walk on'), h('span', { class: 'cbadge leave' }, 'LEAVE')));
     sheet.set(h('div', { class: 'parchment moment' },
-      h('div', { class: 'ev-kind' }, `${SIGNS.moment.icon} On the road · ${this.regionName(s.pos)}`),
+      h('div', { class: 'ev-kind' }, h('span', null, `${SIGNS.moment.icon} On the road · ${this.regionName(s.pos)}`)),
       h('h2', { class: 'ev-title' }, m.title),
       h('p', { class: 'ev-text' }, m.text),
       choices));
@@ -791,7 +792,7 @@ export class Game {
     const banner = this.sceneBanner(ctx.hex, ctx.poi, ctx.landmark, undefined, ctx.biome);
     sheet.set(h('div', { class: 'parchment loading-card has-scene' },
       banner,
-      h('div', { class: 'ev-kind' }, kindLabel),
+      h('div', { class: 'ev-kind' }, h('span', null, kindLabel)),
       h('div', { class: 'spin-die', html: d20Svg('?') }),
       h('p', { class: 'muted center' }, aiEnabled() ? 'The Dungeon Master weaves fate…' : 'The mists part…'),
     ));
@@ -829,7 +830,7 @@ export class Game {
       : null;
     const card = h('div', { class: 'parchment has-scene' },
       banner ?? this.sceneBanner(ctx.hex, ctx.poi, ctx.landmark, undefined, ctx.biome),
-      h('div', { class: 'ev-kind' }, kindLabel, h('span', { class: 'tier' }, '☠'.repeat(ctx.tier))),
+      h('div', { class: 'ev-kind' }, h('span', null, kindLabel), h('span', { class: 'tier' }, '☠'.repeat(ctx.tier))),
       h('h2', { class: 'ev-title' }, ev.title),
       npcEl,
       text,
@@ -1352,7 +1353,7 @@ export class Game {
         }
         const it = intentText(enemy);
         intentEl.className = `intent ${enemy.stun > 0 ? 'stunned' : enemy.intent}`;
-        intentEl.textContent = `${it.icon} ${it.text}`;
+        intentEl.replaceChildren(h('span', { class: 'intent-ico', 'aria-hidden': 'true' }, it.icon), h('span', null, it.text));
         if (enemy.intent === 'heavy' && enemy.stun <= 0 && !cs.end) hint('heavy', 'A crushing blow is coming! 🛡️ Defend to halve it, or stun the foe first.', 'top', true);
         inspBtn.style.display = p.inspiration ? '' : 'none';
         if (!p.inspiration) { inspire = false; inspBtn.classList.remove('on'); }
@@ -1754,7 +1755,7 @@ export class Game {
     const render = () => {
       sheet.set(h('div', { class: 'parchment has-scene' },
         banner,
-        h('div', { class: 'ev-kind' }, 'Market', h('span', { class: 'gold-badge' }, `🪙 ${p.gold}`)),
+        h('div', { class: 'ev-kind' }, h('span', null, 'Market'), h('span', { class: 'gold-badge' }, `🪙 ${p.gold}`)),
         h('h2', { class: 'ev-title' }, 'Wares & Wonders'),
         h('div', { class: 'shop-list' },
           h('div', { class: 'shop-item' }, h('span', { class: 'si-icon', html: potionArt() }), h('div', null, h('b', null, 'Healing Potion'), h('small', null, `Heals 2d4+4 · you have ${p.potions}`)),
