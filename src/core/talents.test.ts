@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createGame, addNpc } from './state';
 import { newHero, newPlayer, gainXp, checkBonus, rollD20, xpForNext, xpStep, XP_LEVELS, mod } from './rules';
 import { TREES, ABILITIES, ROW_LEVEL, learn, learnState, abilitiesOf, modsOf, autoPick, treeSize, type AbilityId } from './talents';
 import { ensureHero, syncParty, autoLearn, classForRole, migrateSave, heroCheck, partyMods } from './companions';
 import { makeEnemy, startCombat, playRound, useBonus, canUse, partyUnits, afterFight, type CombatState } from './combat';
 import { startDay } from './state';
+import { mulberry32, rand, setRand } from './rng';
 import type { ClassId, EnemyKind, GameState } from './types';
 
 const CLS: ClassId[] = ['warrior', 'rogue', 'mage', 'bard'];
@@ -194,12 +195,12 @@ function party(cls: ClassId, level: number, allies: number) {
   const s = createGame('T', cls, 'heroic', { name: 'W', hook: 'h' });
   gainXp(s.player, XP_LEVELS[level - 1], true);
   let n;
-  while ((n = autoPick(s.player, Math.floor(Math.random() * 3)))) learn(s.player, n.id);
+  while ((n = autoPick(s.player, Math.floor(rand() * 3)))) learn(s.player, n.id);
   s.player.hp = s.player.maxHp;
   const plus = Math.round(Math.max(1, Math.min(5, Math.ceil(level / 3))) * 0.8 + 0.6);
   if (level > 2) { s.player.weapon.plus = plus; s.player.armor.plus += Math.ceil(plus / 2); }
   for (let i = 0; i < allies; i++) {
-    const npc = addNpc(s, { name: `Ally ${i} ${Math.random()}`, role: 'x', look: '', personality: '', cls: CLS[Math.floor(Math.random() * 4)] }, 'here');
+    const npc = addNpc(s, { name: `Ally ${i} ${rand()}`, role: 'x', look: '', personality: '', cls: CLS[Math.floor(rand() * 4)] }, 'here');
     npc.inParty = true;
     ensureHero(npc, level);
     autoLearn(npc);
@@ -217,7 +218,7 @@ function smartMove(cs: CombatState, main: AbilityId[]): AbilityId | 'attack' | '
 function fight(s: GameState, tier: number, boss: boolean, level: number, smart = true) {
   const kinds: EnemyKind[] = ['beast', 'humanoid', 'undead', 'monster', 'spirit'];
   const allies = partyUnits(s).length - 1;
-  const cs = startCombat(makeEnemy({ name: 'F', kind: kinds[Math.floor(Math.random() * 5)] }, tier, boss, allies, level));
+  const cs = startCombat(makeEnemy({ name: 'F', kind: kinds[Math.floor(rand() * kinds.length)] }, tier, boss, allies, level));
   const p = s.player;
   let r = 0;
   while (!cs.end && r++ < 80) {
@@ -235,7 +236,16 @@ function fight(s: GameState, tier: number, boss: boolean, level: number, smart =
   return cs.end;
 }
 
+// These fights used to roll with Math.random. Bard alone at tier 3 wins about
+// 94.5% of them, but 80 rolls sometimes land on exactly 68/80 and `> 0.85`
+// rejects that tie (the 0.12.0 deploy). Seed 21 repeats a sample near that
+// rate: every checked class stays above 92%, and bracing still saves HP.
+const COMBAT_SEED = 21;
+
 describe('party combat', () => {
+  beforeEach(() => setRand(mulberry32(COMBAT_SEED)));
+  afterEach(() => setRand(null));
+
   it('every ability resolves for every class', () => {
     for (const cls of CLS) {
       const s = party(cls, 20, 2);

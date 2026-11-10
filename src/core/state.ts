@@ -1,4 +1,5 @@
 import { key, spiral, type Hex } from './hex';
+import { rand } from './rng';
 import { newPlayer } from './rules';
 import { visionRadius } from './world';
 import { omenFor } from './content';
@@ -8,7 +9,7 @@ import type { ClassId, GameState, LogEntry, NPC, NpcSpec, Tone, Turn } from './t
 const SAVE_KEY = 'hexbound.save.v1';
 
 export function createGame(name: string, cls: ClassId, tone: Tone, world: { name: string; hook: string }): GameState {
-  const seed = (Math.random() * 2 ** 31) | 0;
+  const seed = (rand() * 2 ** 31) | 0;
   const s: GameState = {
     version: 1, seed, createdAt: Date.now(), lastPlayed: Date.now(), tone, world,
     player: newPlayer(name, cls),
