@@ -1,5 +1,6 @@
-// Seeded randomness. World generation is deterministic from the seed;
-// dice use Math.random-backed RNG so rolls are genuinely random.
+// Seeded randomness. World generation is deterministic from the seed.
+// Dice go through `rand`: Math.random in play, a generator installed with
+// `setRand` in tests so a balance sample can be repeated exactly.
 
 export function hash2(x: number, y: number, seed: number): number {
   let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul(seed | 0, 0x9e3779b1);
@@ -34,7 +35,16 @@ export function hashString(s: string): number {
 }
 
 export type Rand = () => number;
-export const rand: Rand = Math.random;
+
+let randImpl: Rand = Math.random;
+
+/** 0..1 float. Math.random unless a test has installed a seeded generator. */
+export const rand: Rand = () => randImpl();
+
+/** Point dice, picks and new games at `next`. Pass null to restore Math.random. */
+export function setRand(next: Rand | null): void {
+  randImpl = next ?? Math.random;
+}
 
 export function randInt(min: number, max: number, r: Rand = rand): number {
   return Math.floor(r() * (max - min + 1)) + min;
